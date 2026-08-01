@@ -10,24 +10,57 @@
 (() => {
   "use strict";
 
+  const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+  const seeded = seed => {
+    let s = seed;
+    return () => (s = (s * 16807) % 2147483647) / 2147483647;
+  };
+
   // ---------- canvas ----------
+  const stage = document.getElementById("stage");
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d");
-  const W = canvas.width;   // 900
-  const H = canvas.height;  // 260
-  ctx.imageSmoothingEnabled = false;
+
+  // ---------- responsive world ----------
+  // Everything below is measured in world "units". The canvas shows a runway
+  // of W units, picked from the CSS width so sprites land at a comfortable
+  // physical size: ~900 on desktops/tablets, ~700 on phones (a tighter camera
+  // rather than a shrunken one). Narrowing the camera would make the game
+  // harder for free, so the scroll speed and the jump arc are scaled by
+  //   f = W / REF_W
+  // which keeps every timing identical on every screen: an obstacle still
+  // takes the same number of seconds to reach the player, and a jump still
+  // covers the same number of units of ground (see doJump / update).
+  const REF_W = 900;            // reference runway the tuning was done at
+  const RUNWAY_MIN = 700;
+  const RUNWAY_MAX = 900;
+  const RUNWAY_FLOOR = 620;     // never zoom in past this to trim sky
+  const WORLD_H_MIN = 235;      // units needed for jump arc + HUD headroom
+  const WORLD_H_MAX = 520;      // past this the extra height is dead sky
+
+  let W = REF_W;                // visible width in units
+  let H = 260;                  // visible height in units
+  let GROUND = 225;             // y of the ground line (feet baseline)
+  let f = 1;                    // world scale vs. the reference screen
+  let U = 1;                    // units per CSS pixel (for UI text sizes)
+  let ppu = 1;                  // device pixels per unit (canvas transform)
 
   // ---------- constants ----------
-  const SCALE   = 3;          // sprite px -> canvas px
-  const GROUND  = 225;        // y of the ground line (feet baseline)
+  const SCALE   = 3;          // sprite px -> world units
   const PLAYERX = 70;         // player content-left x
-  const GRAVITY = 1900;       // px/s^2
+  const GRAVITY = 1900;       // units/s^2 at f = 1
   const FASTFALL= 3900;       // gravity while holding duck in the air
-  const JUMP_V  = -660;       // jump impulse px/s
-  const JUMP_CUT= -260;       // vy clamp when jump released early
-  const SPEED0  = 340;        // starting scroll speed px/s
+  const JUMP_V  = -660;       // jump impulse units/s
+  // vy clamp when jump is released early. A touch "tap" is only ~60ms long, so
+  // every tapped jump is a cut jump, and the cut therefore has to stay big
+  // enough to clear the worst group in the spawn table (three fish, 228 units
+  // of overlap at the speed they unlock). -600 -> apex 95 units and 0.62s of
+  // air, vs 115 units / 0.68s for a jump that is held down.
+  const JUMP_CUT= -600;
+  const SPEED0  = 340;        // starting scroll speed, reference units/s
   const SPEEDMAX= 820;
-  const SPEEDUP = 5.2;        // px/s gained per second
+  const SPEEDUP = 5.2;        // reference units/s gained per second
+  const JUMP_BUFFER = 0.12;   // s of "I pressed just before landing" grace
   const NIGHT_EVERY = 500;    // score interval for day/night flip
   const HI_KEY  = "elmio-run.hi";
 
@@ -277,7 +310,7 @@
       x - f.bb[0] * S, yBottom - bodyH - headRows * S, CELL * S, headRows * S);
   }
 
-  // Tight content box in canvas coords (same for flipped sprites).
+  // Tight content box in world coords (same for flipped sprites).
   function frameBox(f, x, yBottom) {
     const w = (f.bb[2] - f.bb[0]) * SCALE;
     const h = (f.bb[3] - f.bb[1]) * SCALE;
@@ -326,120 +359,52 @@
   const bgColor = () => themeColor(DAY.bg, NIGHT.bg);
   const fgColor = () => themeColor(DAY.fg, NIGHT.fg);
 
-  // Stars: fixed, pseudo-random positions (seeded so they don't jitter).
-  const STARS = [];
-  { let s = 42;
-    const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
-    for (let i = 0; i < 20; i++) STARS.push({ x: rnd() * W, y: 15 + rnd() * 110, p: rnd() * 6 });
-  }
-
   // ---------- game state ----------
   const player = {
     y: GROUND, vy: 0, grounded: true,
     ducking: false, animT: 0, state: "title", // title | starting | run | over
     overT: 0,
   };
-  let obstacles = [];   // {kind, sheet, x, alt, animT, phase}
+  let obstacles = [];   // {kind, spr, x, alt, animT, phase}
   let clouds = [];
-  let speed = SPEED0;
+  let speed = SPEED0;   // reference units/s; multiply by f for real movement
   let score = 0;
   let hi = Number(localStorage.getItem(HI_KEY) || 0);
   let worldX = 0;
-  let nextSpawn = 600;
+  let nextSpawn = 0;    // reference units of scroll until `pending` is placed
+  let pending = null;   // the group that will spawn next, chosen in advance
+  let tailArrival = 0;  // timeNow at which the last group finishes passing the cat
+  let spawnLog = [];    // recent {name, gap} spawns, for tuning (see elmio.spawns)
   let cloudTimer = 0;
   let flashT = 0;             // score milestone flash
   let lastMilestone = 0;
   let overAt = 0;             // timestamp of death, for restart lockout
   let timeNow = 0;
+  let jumpBuffer = 0;         // pressed jump slightly before landing
 
-  // Ground speckles: one seeded strip, tiled.
-  const SPECKLES = [];
-  { let s = 7;
-    const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
-    for (let i = 0; i < 70; i++)
-      SPECKLES.push({ x: rnd() * 1800, y: 8 + rnd() * 22, w: 3 + rnd() * 8 });
-  }
-
-  function reset() {
-    obstacles = [];
-    speed = SPEED0;
-    score = 0;
-    worldX = 0;
-    nextSpawn = 600;
-    lastMilestone = 0;
-    flashT = 0;
-    nightTarget = 0;
-    player.y = GROUND; player.vy = 0; player.grounded = true;
-    player.ducking = false; player.animT = 0;
-    player.state = "run";
-  }
-
-  // ---------- obstacles (cat food) ----------
-  // Flying-fish altitude = base height of the fish's bottom above the ground
-  // (foodBottom adds 8 and a ±4 bob). Tuned against the hitboxes so that:
-  //   2  -> must jump over
-  //   25 -> always hits an upright runner, always clears a ducking cat
-  //   44 -> sails overhead: do nothing (fake-out)
-  const FLYER_ALTS = [2, 25, 44];
-
-  function spawnObstacle() {
-    const r = Math.random();
-    if (score > 120 && r < 0.28) {
-      const altR = Math.random();
-      const alt = FLYER_ALTS[altR < 0.4 ? 0 : altR < 0.8 ? 1 : 2];
-      obstacles.push({ kind: "flyFish", x: W + 40, alt,
-                       animT: 0, phase: Math.random() * 6.28 });
-    } else {
-      const at = (spr, dx) =>
-        obstacles.push({ kind: "food", spr, x: W + 40 + dx, yOff: 0, animT: 0, phase: 0 });
-      const fishStep = SPR.fish.w * SCALE + 6;
-      const g = Math.random();
-      if (g < 0.22)      at(SPR.fish, 0);
-      else if (g < 0.34) { at(SPR.fish, 0); at(SPR.fish, fishStep); }
-      else if (g < 0.42 && speed > 450) { for (let i = 0; i < 3; i++) at(SPR.fish, i * fishStep); }
-      else if (g < 0.52) at(SPR.can, 0);
-      else if (g < 0.62) { at(SPR.can, 0); at(SPR.can, SPR.can.w * SCALE + 8); }
-      else if (g < 0.74) at(SPR.bag, 0);
-      else if (g < 0.84) at(SPR.pouch, 0);
-      else if (g < 0.93) at(SPR.kibble, 0);
-      else               at(SPR.fishbone, 0);
-    }
-    nextSpawn = (0.75 + Math.random() * 0.75) * speed + 200;
-  }
-
-  function foodSprite(o) {
-    return o.kind === "flyFish" ? SPR.fishSpin[Math.floor(o.animT * 8) % 4] : o.spr;
-  }
-
-  function foodBottom(o) {
-    if (o.kind === "flyFish")
-      return GROUND - o.alt - 8 + Math.sin(timeNow * 3 + o.phase) * 4;
-    return GROUND - (o.yOff || 0);
-  }
-
-  function foodBox(o) {
-    const spr = foodSprite(o);
-    const yB = foodBottom(o);
-    return { x: o.x + 4, y: yB - spr.h * SCALE + 4, w: spr.w * SCALE - 8, h: spr.h * SCALE - 8 };
-  }
+  // Scenery is laid out in world units, so it is rebuilt whenever the
+  // viewport changes (see buildScenery).
+  let STARS = [];
+  let SPECKLES = [];
+  let SPECKLE_STRIP = 1800;   // width of the tiled ground-speckle strip
 
   // ---------- background racers ----------
   // The other cat colors run along in the distance, each at its own depth:
   // depth 0 = just far enough (bigger, bolder, wide fast drift),
   // depth 1 = far far away (small, faint, high on the horizon, barely drifts).
   // Drawn far-to-near so closer cats overlap distant ones.
+  // Identity (color, depth, drift) is fixed for the session; the screen-space
+  // fields are recomputed by layoutRacers() on every resize.
   const racers = (() => {
     const picked = RACER_COLORS
       .map(sheet => ({ sheet, r: Math.random() }))
-      .sort((a, b) => a.r - b.r)
-      .slice(0, 5);
+      .sort((a, b) => a.r - b.r);
     // one horizontal slot per cat (shuffled) so start positions are spread
     // out with a guaranteed gap instead of randomly bunching up
     const slots = picked
       .map((_, i) => ({ i, r: Math.random() }))
       .sort((a, b) => a.r - b.r)
       .map(s => s.i);
-    const slotW = (W - 300) / picked.length;
     return picked
       .map((c, i, arr) => {
         const depth = i / (arr.length - 1);
@@ -447,16 +412,26 @@
           sheet: c.sheet,
           depth,
           scale: depth < 0.5 ? 2 : 1,
-          yB: GROUND - 10 - depth * 20,
           alpha: 0.45 - depth * 0.22,
-          baseX: 130 + slots[i] * slotW + Math.random() * (slotW - 60),
+          slot: slots[i],
+          jitter: Math.random(),
           ph: Math.random() * 6.28,
-          amp: (25 + Math.random() * 45) * (1 - 0.55 * depth),
+          ampBase: (25 + Math.random() * 45) * (1 - 0.55 * depth),
           wfreq: (0.18 + Math.random() * 0.2) * (1 - 0.4 * depth),
+          baseX: 0, yB: 0, amp: 0,
         };
       })
       .sort((a, b) => b.depth - a.depth);
   })();
+
+  function layoutRacers() {
+    const slotW = Math.max(40, (W - 300) / racers.length);
+    for (const r of racers) {
+      r.baseX = 130 * f + r.slot * slotW + r.jitter * Math.max(0, slotW - 60);
+      r.yB = GROUND - 10 - r.depth * 20;
+      r.amp = r.ampBase * f;
+    }
+  }
 
   function drawRacers() {
     const anim = player.state === "run" ? "run" : "sitIdle";
@@ -466,6 +441,208 @@
       drawFrame(r.sheet, animFrame(anim, timeNow + r.ph), x, r.yB, false, r.scale);
     }
     ctx.globalAlpha = 1;
+  }
+
+  // ---------- layout ----------
+  function buildScenery() {
+    const rs = seeded(42);
+    STARS = [];
+    for (let i = 0; i < 22; i++)
+      STARS.push({ x: rs() * W, y: GROUND * (0.05 + rs() * 0.45), p: rs() * 6 });
+
+    const rk = seeded(7);
+    SPECKLE_STRIP = Math.max(1200, W * 2);
+    const band = Math.max(4, H - GROUND - 8);
+    SPECKLES = [];
+    for (let i = 0; i < 80; i++)
+      SPECKLES.push({ x: rk() * SPECKLE_STRIP, y: rk() * band, w: 3 + rk() * 8 });
+
+    layoutRacers();
+  }
+
+  // Fits the unit grid to whatever CSS box the stage ended up with, keeping
+  // the aspect ratio exact so nothing is stretched.
+  function layout() {
+    const cssW = Math.max(1, stage.clientWidth);
+    const cssH = Math.max(1, stage.clientHeight);
+    const prevW = W, prevH = H, prevGround = GROUND;
+
+    // Runway: phones get a tighter camera, tablets and up get the full 900.
+    let w = clamp(cssW * 1.8, RUNWAY_MIN, RUNWAY_MAX);
+    let h = w * cssH / cssW;
+    if (h < WORLD_H_MIN) {                      // short viewport: zoom out
+      w = WORLD_H_MIN * cssW / cssH;
+    } else if (h > WORLD_H_MAX) {               // tall viewport: trim dead sky
+      w = Math.max(RUNWAY_FLOOR, WORLD_H_MAX * cssW / cssH);
+    }
+
+    const dpr = clamp(window.devicePixelRatio || 1, 1, 2);
+    canvas.width  = Math.max(1, Math.round(cssW * dpr));
+    canvas.height = Math.max(1, Math.round(cssH * dpr));
+
+    W = w;
+    ppu = canvas.width / W;
+    H = canvas.height / ppu;                    // exact, no distortion
+    GROUND = Math.round(H - clamp(H * 0.12, 24, 50));
+    f = W / REF_W;
+    U = W / cssW;
+
+    // Carry a game in progress over to the new grid instead of restarting it.
+    const k = W / prevW;
+    for (const o of obstacles) o.x *= k;
+    for (const c of clouds) { c.x *= k; c.y *= H / prevH; c.s *= k; }
+    worldX *= k;
+    player.vy *= k;
+    player.y = player.grounded ? GROUND : player.y + (GROUND - prevGround);
+
+    buildScenery();
+  }
+
+  function reset() {
+    obstacles = [];
+    speed = SPEED0;
+    score = 0;
+    worldX = 0;
+    lastMilestone = 0;
+    flashT = 0;
+    jumpBuffer = 0;
+    nightTarget = 0;
+    player.y = GROUND; player.vy = 0; player.grounded = true;
+    player.ducking = false; player.animT = 0;
+    player.state = "run";
+    spawnLog = [];
+    tailArrival = timeNow + 1.6;   // a beat of empty road to get going
+    scheduleNext();
+  }
+
+  // ---------- obstacles (cat food) ----------
+  // Flying altitude = height of the food's bottom above the ground before the
+  // ±4 bob (foodBottom adds 8 more). Tuned against the hitboxes so that:
+  //   LOW  -> must be jumped
+  //   MID  -> always hits an upright runner, always clears a ducking cat
+  //           (its box bottom sits 33-41 units up, the duck box tops out at 28)
+  //   HIGH -> sails overhead: do nothing (fake-out)
+  const FLY_LOW = 2, FLY_MID = 25, FLY_HIGH = 44;
+  const FLYER_SPEED = 1.25;      // flyers close in faster than the ground scrolls
+  const PLAYER_W = 44;           // width of the player's hitbox
+  const REACH = PLAYERX + 5 + PLAYER_W;   // x of its leading edge
+  const spawnX = () => W + 40;
+
+  function addFood(spr, x) {
+    obstacles.push({ kind: "food", spr, x, yOff: 0, animT: 0, phase: 0 });
+  }
+  function addFlyer(spr, x, alt, phase) {
+    obstacles.push({ kind: "fly", spr, x, alt, animT: 0, phase });
+  }
+
+  // A pattern lays its group out from x rightwards and returns the group width.
+  const row = (spr, n, gap) => x => {
+    const step = spr.w * SCALE + gap;
+    for (let i = 0; i < n; i++) addFood(spr, x + i * step);
+    return (n - 1) * step + spr.w * SCALE;
+  };
+  // spr = null tumbles the spinning fish frames; a sprite glides as-is.
+  const flock = (alt, n, spr = null) => x => {
+    const w = (spr || SPR.fish).w * SCALE, step = w + 8;
+    const phase = Math.random() * 6.28;    // one shared bob, so a flock reads as a flock
+    for (let i = 0; i < n; i++) addFlyer(spr, x + i * step, alt, phase);
+    return (n - 1) * step + w;
+  };
+
+  // Weighted spawn table. `from` gates a pattern behind a score so the opening
+  // is calm and the duck-heavy groups arrive as the cat warms up; `duck` marks
+  // the ones that have to be slid under. A wide flock at head height cannot be
+  // jumped (the arc can't span it while staying above it), so ducking is the
+  // only answer to those.
+  const PATTERNS = [
+    // --- on the ground: jump over ---
+    { name: "fish",      w: 9, make: row(SPR.fish, 1, 0) },
+    { name: "fish2",     w: 7, make: row(SPR.fish, 2, 6) },
+    // three only once the scroll is fast enough for a tapped (cut-short) jump
+    // to still clear the whole school
+    { name: "fish3",     w: 4, minSpeed: 480, make: row(SPR.fish, 3, 6) },
+    { name: "can",       w: 6, make: row(SPR.can, 1, 0) },
+    { name: "can2",      w: 4, make: row(SPR.can, 2, 8) },
+    { name: "bag",       w: 6, make: row(SPR.bag, 1, 0) },
+    { name: "pouch",     w: 5, make: row(SPR.pouch, 1, 0) },
+    { name: "kibble",    w: 5, make: row(SPR.kibble, 1, 0) },
+    { name: "bone",      w: 3, make: row(SPR.fishbone, 1, 0) },
+    // --- airborne ---
+    { name: "flyLow",    w: 5, air: 1, from: 50,  make: flock(FLY_LOW, 1) },
+    { name: "flyMid",    w: 9, air: 1, from: 50,  duck: 1, make: flock(FLY_MID, 1) },
+    { name: "flyBone",   w: 5, air: 1, from: 90,  duck: 1, make: flock(FLY_MID, 1, SPR.fishbone) },
+    { name: "flyMid2",   w: 7, air: 1, from: 160, duck: 1, make: flock(FLY_MID, 2) },
+    { name: "flyMid3",   w: 5, air: 1, from: 320, duck: 1, make: flock(FLY_MID, 3) },
+    { name: "flyBone2",  w: 4, air: 1, from: 420, duck: 1, make: flock(FLY_MID, 2, SPR.fishbone) },
+    { name: "flyHigh",   w: 4, air: 1, from: 110, make: flock(FLY_HIGH, 1) },
+  ];
+
+  function pickPattern() {
+    let total = 0;
+    for (const p of PATTERNS)
+      if (score >= (p.from || 0) && speed >= (p.minSpeed || 0)) total += p.w;
+    let r = Math.random() * total;
+    let last = PATTERNS[0];
+    for (const p of PATTERNS) {
+      if (score < (p.from || 0) || speed < (p.minSpeed || 0)) continue;
+      last = p;
+      if ((r -= p.w) <= 0) return p;
+    }
+    return last;
+  }
+
+  // Breathing room between one group finishing its pass and the next one
+  // arriving, in seconds. Three buckets rather than one flat range, so the
+  // rhythm keeps shifting: back-to-back, cruising, then room to breathe.
+  const MIN_WAIT = 0.18;         // s, keeps two groups from spawning on top of each other
+  function gapSeconds() {
+    const r = Math.random();
+    if (r < 0.30) return 0.70 + Math.random() * 0.25;
+    if (r < 0.82) return 1.05 + Math.random() * 0.60;
+    return 1.90 + Math.random() * 1.00;
+  }
+
+  // The next group is chosen up front so the wait can be solved for the gap the
+  // player actually feels. A plain distance timer gets this wrong twice over:
+  // flyers close in 25% faster than the ground scrolls, and a wide group takes
+  // much longer to finish passing than a single fish.
+  function scheduleNext() {
+    pending = pickPattern();
+    const vx = speed * f * (pending.air ? FLYER_SPEED : 1);
+    const noseTravel = (spawnX() - REACH) / vx;                       // s
+    const gap = gapSeconds();
+    const wait = Math.max(MIN_WAIT, tailArrival + gap - timeNow - noseTravel);
+    nextSpawn = wait * speed;    // drained at the reference speed: same on every screen
+    pending.gap = gap;
+  }
+
+  function spawnPending() {
+    const p = pending || pickPattern();
+    const vx = speed * f * (p.air ? FLYER_SPEED : 1);
+    const x = spawnX();
+    const width = p.make(x);
+    const nose = timeNow + (x - REACH) / vx;
+    tailArrival = nose + (width + PLAYER_W) / vx;
+    spawnLog.push({ name: p.name, gap: +(p.gap || 0).toFixed(2), score: Math.floor(score) });
+    if (spawnLog.length > 60) spawnLog.shift();
+    scheduleNext();
+  }
+
+  function foodSprite(o) {
+    if (o.kind === "fly" && !o.spr) return SPR.fishSpin[Math.floor(o.animT * 8) % 4];
+    return o.spr;
+  }
+
+  function foodBottom(o) {
+    if (o.kind === "fly")
+      return GROUND - o.alt - 8 + Math.sin(timeNow * 3 + o.phase) * 4;
+    return GROUND - (o.yOff || 0);
+  }
+
+  function foodBox(o) {
+    const spr = foodSprite(o);
+    const yB = foodBottom(o);
+    return { x: o.x + 4, y: yB - spr.h * SCALE + 4, w: spr.w * SCALE - 8, h: spr.h * SCALE - 8 };
   }
 
   // ---------- player boxes ----------
@@ -478,8 +655,8 @@
         : animFrameOnce("toSleep", player.overT);
     }
     if (!player.grounded) {
-      if (player.vy < -140) return F.crouch;
-      if (player.vy > 140)  return F.tuck;
+      if (player.vy < -140 * f) return F.crouch;
+      if (player.vy > 140 * f)  return F.tuck;
       return F.stretch;
     }
     return player.ducking ? animFrame("duck", player.animT)
@@ -494,6 +671,22 @@
   }
 
   // ---------- input ----------
+  let touchMode = matchMedia("(hover: none) and (pointer: coarse)").matches ||
+                  navigator.maxTouchPoints > 0;
+
+  function haptic(ms) {
+    if (touchMode && navigator.vibrate) { try { navigator.vibrate(ms); } catch (_) {} }
+  }
+
+  function doJump() {
+    player.vy = JUMP_V * f;          // arc height stays put, air time scales 1/f
+    player.grounded = false;
+    player.ducking = false;
+    jumpBuffer = 0;
+    beep(560, 0.08);
+    haptic(8);
+  }
+
   function jumpAction() {
     if (!assetsReady) return;
     if (player.state === "title") {
@@ -506,62 +699,81 @@
       if (performance.now() - overAt > 500) { reset(); beep(700, 0.07); }
       return;
     }
-    if (player.state === "run" && player.grounded && !player.ducking) {
-      player.vy = JUMP_V;
-      player.grounded = false;
-      beep(560, 0.08);
-    }
+    if (player.state !== "run") return;
+    if (player.grounded) doJump();
+    else jumpBuffer = JUMP_BUFFER;   // land-and-go grace for laggy touchscreens
   }
+
   function jumpRelease() {
-    if (!player.grounded && player.vy < JUMP_CUT) player.vy = JUMP_CUT;
+    if (!player.grounded && player.vy < JUMP_CUT * f) player.vy = JUMP_CUT * f;
   }
+
+  function duckPress() {
+    if (player.state !== "run") { jumpAction(); return; }   // start / restart
+    player.ducking = true;
+    haptic(6);
+  }
+  function duckRelease() { player.ducking = false; }
 
   window.addEventListener("keydown", e => {
     if (["Space", "ArrowUp", "ArrowDown", "KeyW", "KeyS"].includes(e.code)) e.preventDefault();
     if (e.repeat) return;
     if (e.code === "Space" || e.code === "ArrowUp" || e.code === "KeyW" || e.code === "Enter") jumpAction();
-    if (e.code === "ArrowDown" || e.code === "KeyS") player.ducking = true;
+    if (e.code === "ArrowDown" || e.code === "KeyS") duckPress();
   });
   window.addEventListener("keyup", e => {
     if (e.code === "Space" || e.code === "ArrowUp" || e.code === "KeyW") jumpRelease();
-    if (e.code === "ArrowDown" || e.code === "KeyS") player.ducking = false;
+    if (e.code === "ArrowDown" || e.code === "KeyS") duckRelease();
   });
 
-  // Touch: bottom 40% of the canvas = hold to duck, elsewhere = jump.
-  let duckTouchId = null;
-  canvas.addEventListener("touchstart", e => {
+  // Tapping/clicking anywhere in the play field jumps; ducking is the DUCK
+  // pad or the down arrow, so there is no invisible half-screen to mis-hit.
+  canvas.addEventListener("pointerdown", e => {
     e.preventDefault();
-    for (const t of e.changedTouches) {
-      const rect = canvas.getBoundingClientRect();
-      const y = (t.clientY - rect.top) / rect.height;
-      if (y > 0.6 && player.state === "run") {
-        player.ducking = true;
-        duckTouchId = t.identifier;
-      } else {
-        jumpAction();
-      }
-    }
-  }, { passive: false });
-  canvas.addEventListener("touchend", e => {
-    for (const t of e.changedTouches) {
-      if (t.identifier === duckTouchId) { player.ducking = false; duckTouchId = null; }
-      else jumpRelease();
-    }
+    try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+    if (e.pointerType === "touch") { touchMode = true; document.body.classList.add("touch"); }
+    jumpAction();
   });
-  canvas.addEventListener("mousedown", () => jumpAction());
-  window.addEventListener("mouseup", () => jumpRelease());
+  canvas.addEventListener("pointerup", jumpRelease);
+  canvas.addEventListener("pointercancel", jumpRelease);
+  canvas.addEventListener("contextmenu", e => e.preventDefault());
+
+  // Hold-style pads. Pointer capture keeps the hold alive even if the thumb
+  // slides off the button, and guarantees we always see the release.
+  function bindPad(el, onDown, onUp) {
+    if (!el) return;
+    const release = () => {
+      if (!el.classList.contains("on")) return;
+      el.classList.remove("on");
+      onUp();
+    };
+    el.addEventListener("pointerdown", e => {
+      e.preventDefault();
+      try { el.setPointerCapture(e.pointerId); } catch (_) {}
+      el.classList.add("on");
+      onDown();
+    });
+    el.addEventListener("pointerup", release);
+    el.addEventListener("pointercancel", release);
+    el.addEventListener("lostpointercapture", release);
+    el.addEventListener("contextmenu", e => e.preventDefault());
+  }
+  bindPad(document.getElementById("btn-jump"), jumpAction, jumpRelease);
+  bindPad(document.getElementById("btn-duck"), duckPress, duckRelease);
 
   // ---------- update ----------
   function die() {
     player.state = "over";
     player.overT = 0;
     player.ducking = false;
+    jumpBuffer = 0;
     overAt = performance.now();
     if (score > hi) {
       hi = Math.floor(score);
       localStorage.setItem(HI_KEY, hi);
     }
     beep(160, 0.3, "sawtooth", 0.05);
+    haptic(35);
   }
 
   function update(dt) {
@@ -576,21 +788,25 @@
     if (player.state === "over") { player.overT += dt; return; }
     if (player.state !== "run") return;
 
+    const vx = speed * f;        // real scroll speed in world units/s
+
     // physics
+    if (jumpBuffer > 0) jumpBuffer -= dt;
     if (!player.grounded) {
-      player.vy += (player.ducking ? FASTFALL : GRAVITY) * dt;
+      player.vy += (player.ducking ? FASTFALL : GRAVITY) * f * f * dt;
       player.y += player.vy * dt;
       if (player.y >= GROUND) {
         player.y = GROUND;
         player.vy = 0;
         player.grounded = true;
+        if (jumpBuffer > 0) doJump();
       }
     }
 
     // world
     speed = Math.min(SPEEDMAX, speed + SPEEDUP * dt);
-    worldX += speed * dt;
-    score += speed * dt * 0.025;
+    worldX += vx * dt;
+    score += speed * dt * 0.025;   // reference speed: scores compare across devices
 
     // milestone flash + jingle
     const ms = Math.floor(score / 100);
@@ -606,21 +822,22 @@
 
     // obstacles
     nextSpawn -= speed * dt;
-    if (nextSpawn <= 0) spawnObstacle();
+    if (nextSpawn <= 0) spawnPending();
     for (const o of obstacles) {
       o.animT += dt;
-      o.x -= speed * dt * (o.kind === "flyFish" ? 1.25 : 1);
+      o.x -= vx * dt * (o.kind === "fly" ? FLYER_SPEED : 1);
     }
-    obstacles = obstacles.filter(o => o.x > -120);
+    obstacles = obstacles.filter(o => o.x > -140);
 
     // clouds (day scenery)
     cloudTimer -= dt;
     if (cloudTimer <= 0) {
-      clouds.push({ x: W + 60, y: 25 + Math.random() * 80, s: 0.55 + Math.random() * 0.7 });
+      clouds.push({ x: W + 60, y: GROUND * (0.08 + Math.random() * 0.38),
+                    s: (0.55 + Math.random() * 0.7) * f });
       cloudTimer = 2.5 + Math.random() * 4;
     }
-    for (const c of clouds) c.x -= speed * 0.15 * dt;
-    clouds = clouds.filter(c => c.x > -140);
+    for (const c of clouds) c.x -= vx * 0.15 * dt;
+    clouds = clouds.filter(c => c.x > -160);
 
     // collision
     const pb = playerHitbox(playerFrame());
@@ -633,15 +850,15 @@
   function drawGround() {
     ctx.fillStyle = fgColor();
     ctx.fillRect(0, GROUND + 2, W, 2);
-    const off = worldX % 1800;
+    const off = worldX % SPECKLE_STRIP;
+    ctx.globalAlpha = 0.5;
     for (const s of SPECKLES) {
       let x = s.x - off;
-      if (x < -20) x += 1800;
+      if (x < -20) x += SPECKLE_STRIP;
       if (x > W + 20) continue;
-      ctx.globalAlpha = 0.5;
-      ctx.fillRect(x, GROUND + 4 + s.y * 0.6, s.w, 2);
-      ctx.globalAlpha = 1;
+      ctx.fillRect(x, GROUND + 5 + s.y, s.w, 2);
     }
+    ctx.globalAlpha = 1;
   }
 
   function drawSky() {
@@ -663,49 +880,71 @@
         ctx.fillRect(s.x, s.y, 3, 3);
       }
       // crescent moon
+      // low enough that it never sits behind the score on a narrow screen
+      const mx = W - Math.min(120, W * 0.16), my = GROUND * 0.26, mr = 20 * f + 4;
       ctx.globalAlpha = night * 0.9;
       ctx.beginPath();
-      ctx.arc(W - 120, 55, 22, 0, Math.PI * 2);
+      ctx.arc(mx, my, mr, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 1;
       ctx.fillStyle = bgColor();
       ctx.beginPath();
-      ctx.arc(W - 110, 48, 19, 0, Math.PI * 2);
+      ctx.arc(mx + mr * 0.45, my - mr * 0.32, mr * 0.86, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.globalAlpha = 1;
   }
 
+  // UI text is sized in CSS pixels (via U) so it stays legible on a phone
+  // even though the world around it is measured in units.
+  function uiFont(cssPx, weight = "") {
+    ctx.font = `${weight} ${Math.max(9, cssPx * U)}px 'Courier New', monospace`.trim();
+  }
+
   function drawHUD() {
     ctx.fillStyle = fgColor();
-    ctx.font = "16px 'Courier New', monospace";
+    uiFont(14);
     ctx.textAlign = "right";
+    const margin = 14 * U;
+    const baseline = 12 * U + 14 * U;
     const s = String(Math.floor(score)).padStart(5, "0");
     const showScore = flashT <= 0 || Math.floor(flashT * 6) % 2 === 0;
-    if (showScore) ctx.fillText(s, W - 20, 30);
+    if (showScore) ctx.fillText(s, W - margin, baseline);
     if (hi > 0) {
       ctx.globalAlpha = 0.55;
-      ctx.fillText("HI " + String(hi).padStart(5, "0"), W - 110, 30);
+      ctx.fillText("HI " + String(hi).padStart(5, "0"),
+        W - margin - ctx.measureText(s).width - 12 * U, baseline);
       ctx.globalAlpha = 1;
     }
     ctx.textAlign = "left";
   }
 
-  function drawCenterText(lines) {
+  function drawCenterText(title, sub) {
     ctx.fillStyle = fgColor();
     ctx.textAlign = "center";
-    ctx.font = "bold 24px 'Courier New', monospace";
-    ctx.fillText(lines[0], W / 2, 95);
-    if (lines[1]) {
-      ctx.font = "14px 'Courier New', monospace";
+    const maxW = W * 0.9;
+    const y = Math.round(H * 0.34);
+
+    uiFont(23, "bold");
+    let tw = ctx.measureText(title).width;
+    if (tw > maxW) uiFont(23 * maxW / tw, "bold");
+    ctx.fillText(title, W / 2, y);
+
+    if (sub) {
+      uiFont(13);
+      let sw = ctx.measureText(sub).width;
+      if (sw > maxW) uiFont(13 * maxW / sw);
       ctx.globalAlpha = 0.75;
-      ctx.fillText(lines[1], W / 2, 122);
+      ctx.fillText(sub, W / 2, y + 26 * U);
       ctx.globalAlpha = 1;
     }
     ctx.textAlign = "left";
   }
 
   function render() {
+    ctx.setTransform(ppu, 0, 0, ppu, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+
     ctx.fillStyle = bgColor();
     ctx.fillRect(0, 0, W, H);
 
@@ -713,7 +952,7 @@
     drawGround();
 
     if (!assetsReady) {
-      drawCenterText(["LOADING…"]);
+      drawCenterText("LOADING…");
       return;
     }
 
@@ -734,10 +973,45 @@
     drawHUD();
 
     if (player.state === "title") {
-      drawCenterText(["E L M I O   R U N", "press SPACE or tap to start"]);
+      drawCenterText("E L M I O   R U N",
+        touchMode ? "tap to start" : "press SPACE to start");
     } else if (player.state === "over") {
-      drawCenterText(["G A M E   O V E R", "press SPACE or tap to try again"]);
+      drawCenterText("G A M E   O V E R",
+        touchMode ? "tap to try again" : "press SPACE to try again");
     }
+  }
+
+  // ---------- viewport plumbing ----------
+  let layoutQueued = 0;
+  function scheduleLayout() {
+    if (layoutQueued) return;
+    layoutQueued = requestAnimationFrame(() => { layoutQueued = 0; layout(); });
+  }
+  window.addEventListener("resize", scheduleLayout);
+  window.addEventListener("orientationchange", scheduleLayout);
+  document.addEventListener("fullscreenchange", scheduleLayout);
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", scheduleLayout);
+  if (window.ResizeObserver) new ResizeObserver(scheduleLayout).observe(stage);
+
+  // Mobile browser chrome eats a lot of a landscape screen; offer a way out.
+  // Desktop has F11, so the button is a touch-only affordance.
+  const fsBtn = document.getElementById("fullscreen");
+  const canFullscreen = !!document.documentElement.requestFullscreen;
+
+  function enterTouchMode() {
+    touchMode = true;
+    document.body.classList.add("touch");
+    if (fsBtn && canFullscreen) fsBtn.hidden = false;
+  }
+  if (touchMode) enterTouchMode();
+  window.addEventListener("touchstart", enterTouchMode, { once: true, passive: true });
+
+  if (fsBtn && canFullscreen) {
+    fsBtn.addEventListener("click", () => {
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      else document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
+      fsBtn.blur();
+    });
   }
 
   // ---------- main loop ----------
@@ -751,6 +1025,8 @@
     requestAnimationFrame(loop);
   }
   document.addEventListener("visibilitychange", () => { lastT = null; });
+
+  layout();
   requestAnimationFrame(loop);
 
   // dev hook: e.g. `elmio.score = 495` in the console to preview night mode
@@ -759,9 +1035,17 @@
     set score(v) { score = v; },
     get state()  { return player.state; },
     get speed()  { return speed; },
+    get ducking(){ return player.ducking; },
+    get world()  { return { W, H, GROUND, f, U, ppu, css: [stage.clientWidth, stage.clientHeight] }; },
     duck(on)     { player.ducking = !!on; },
     jump()       { jumpAction(); },
+    relayout()   { layout(); },
     tick(dt = 1 / 60, n = 1) { for (let i = 0; i < n; i++) update(dt); render(); },
+    get spawns() { return spawnLog.slice(); },
+    get patterns() {
+      return PATTERNS.map(p => ({ name: p.name, weight: p.w, from: p.from || 0,
+                                  duck: !!p.duck, air: !!p.air }));
+    },
     get debug() {
       return {
         player: playerHitbox(playerFrame()), y: player.y, grounded: player.grounded,

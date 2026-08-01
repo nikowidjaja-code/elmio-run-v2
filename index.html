@@ -2,20 +2,36 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#dfd6c5">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Elmio Run</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main>
     <h1>ELMIO&nbsp;RUN</h1>
+
     <div id="stage">
-      <canvas id="game" width="900" height="260"></canvas>
+      <canvas id="game"></canvas>
+      <button id="fullscreen" type="button" aria-label="Toggle fullscreen" hidden>&#9974;</button>
     </div>
+
     <p class="hint">
-      <kbd>Space</kbd>/<kbd>&uarr;</kbd> jump &middot; <kbd>&darr;</kbd> duck &middot;
-      touch: tap top to jump, hold bottom to duck
+      <span class="keys"><kbd>Space</kbd>/<kbd>&uarr;</kbd> jump &middot; <kbd>&darr;</kbd> duck</span>
+      <span class="taps">tap the screen to jump &middot; hold DUCK to slide under</span>
     </p>
+
+    <div id="controls">
+      <button id="btn-duck" class="pad" type="button" aria-label="Duck">
+        <span class="glyph">&#9660;</span><span class="cap">DUCK</span>
+      </button>
+      <button id="btn-jump" class="pad" type="button" aria-label="Jump">
+        <span class="glyph">&#9650;</span><span class="cap">JUMP</span>
+      </button>
+    </div>
   </main>
   <script src="game.js"></script>
 </body>
