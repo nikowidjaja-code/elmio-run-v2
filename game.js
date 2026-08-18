@@ -59,7 +59,7 @@
   const JUMP_CUT= -600;
   const SPEED0  = 340;        // starting scroll speed, reference units/s
   const SPEEDMAX= 820;
-  const SPEEDUP = 5.2;        // reference units/s gained per second
+  const SPEEDUP = 10.4;       // reference units/s gained per second
   const JUMP_BUFFER = 0.12;   // s of "I pressed just before landing" grace
   const NIGHT_EVERY = 500;    // score interval for day/night flip
   const HI_KEY  = "elmio-run.hi";
@@ -166,14 +166,6 @@
     });
     return { cv, w, h };
   }
-  function rot90(spr) {
-    const cv = document.createElement("canvas");
-    cv.width = spr.h; cv.height = spr.w;
-    const c = cv.getContext("2d");
-    c.translate(spr.h, 0); c.rotate(Math.PI / 2);
-    c.drawImage(spr.cv, 0, 0);
-    return { cv, w: spr.h, h: spr.w };
-  }
   const SPR = {
     fish: makeSprite([         // whole fish, facing the runner
       "......OOOOOO........",
@@ -268,9 +260,6 @@
       ".OOOOOOOOOOO.",
     ]),
   };
-  SPR.fishSpin = [SPR.fish];
-  for (let i = 0; i < 3; i++) SPR.fishSpin.push(rot90(SPR.fishSpin[i]));
-
   // ---------- drawing helpers ----------
   // Draws frame f with its content-left edge at x and content-bottom at yBottom.
   // s = pixel scale; the background racers use a smaller one than the player.
@@ -523,7 +512,7 @@
   //           (its box bottom sits 33-41 units up, the duck box tops out at 28)
   //   HIGH -> sails overhead: do nothing (fake-out)
   const FLY_LOW = 2, FLY_MID = 25, FLY_HIGH = 44;
-  const FLYER_SPEED = 1.25;      // flyers close in faster than the ground scrolls
+  const FLYER_SPEED = 1.6;       // flyers close in faster than the ground scrolls
   const PLAYER_W = 44;           // width of the player's hitbox
   const REACH = PLAYERX + 5 + PLAYER_W;   // x of its leading edge
   const spawnX = () => W + 40;
@@ -541,7 +530,7 @@
     for (let i = 0; i < n; i++) addFood(spr, x + i * step);
     return (n - 1) * step + spr.w * SCALE;
   };
-  // spr = null tumbles the spinning fish frames; a sprite glides as-is.
+  // spr = null glides as a plain fish; passing a sprite glides that instead.
   const flock = (alt, n, spr = null) => x => {
     const w = (spr || SPR.fish).w * SCALE, step = w + 8;
     const phase = Math.random() * 6.28;    // one shared bob, so a flock reads as a flock
@@ -568,13 +557,13 @@
     { name: "kibble",    w: 5, make: row(SPR.kibble, 1, 0) },
     { name: "bone",      w: 3, make: row(SPR.fishbone, 1, 0) },
     // --- airborne ---
-    { name: "flyLow",    w: 5, air: 1, from: 50,  make: flock(FLY_LOW, 1) },
-    { name: "flyMid",    w: 9, air: 1, from: 50,  duck: 1, make: flock(FLY_MID, 1) },
-    { name: "flyBone",   w: 5, air: 1, from: 90,  duck: 1, make: flock(FLY_MID, 1, SPR.fishbone) },
-    { name: "flyMid2",   w: 7, air: 1, from: 160, duck: 1, make: flock(FLY_MID, 2) },
-    { name: "flyMid3",   w: 5, air: 1, from: 320, duck: 1, make: flock(FLY_MID, 3) },
-    { name: "flyBone2",  w: 4, air: 1, from: 420, duck: 1, make: flock(FLY_MID, 2, SPR.fishbone) },
-    { name: "flyHigh",   w: 4, air: 1, from: 110, make: flock(FLY_HIGH, 1) },
+    { name: "flyLow",    w: 10, air: 1, from: 50,  make: flock(FLY_LOW, 1) },
+    { name: "flyMid",    w: 18, air: 1, from: 50,  duck: 1, make: flock(FLY_MID, 1) },
+    { name: "flyBone",   w: 10, air: 1, from: 90,  duck: 1, make: flock(FLY_MID, 1, SPR.fishbone) },
+    { name: "flyMid2",   w: 14, air: 1, from: 160, duck: 1, make: flock(FLY_MID, 2) },
+    { name: "flyMid3",   w: 10, air: 1, from: 320, duck: 1, make: flock(FLY_MID, 3) },
+    { name: "flyBone2",  w: 8, air: 1, from: 420, duck: 1, make: flock(FLY_MID, 2, SPR.fishbone) },
+    { name: "flyHigh",   w: 8, air: 1, from: 110, make: flock(FLY_HIGH, 1) },
   ];
 
   function pickPattern() {
@@ -629,7 +618,7 @@
   }
 
   function foodSprite(o) {
-    if (o.kind === "fly" && !o.spr) return SPR.fishSpin[Math.floor(o.animT * 8) % 4];
+    if (o.kind === "fly" && !o.spr) return SPR.fish;
     return o.spr;
   }
 
