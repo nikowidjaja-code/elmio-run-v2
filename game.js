@@ -362,23 +362,78 @@
            a.y < b.y + b.h && a.y + a.h > b.y;
   }
 
-  // ---------- audio (tiny procedural blips, no asset files) ----------
-  let audioCtx = null;
-  function beep(freq, dur, type = "square", vol = 0.03, delay = 0) {
+  // ---------- audio (synthesized with WebAudio, no asset files) ----------
+  // Everything is quiet and short. A master gain carries the mute switch, which is remembered.
+  const MUTE_KEY = "elmio-run.mute";
+  let audioCtx = null, master = null, noiseBuf = null;
+  let muted = false;
+  try { muted = localStorage.getItem(MUTE_KEY) === "1"; } catch (_) {}
+  function audioReady() {
+    if (muted) return false;
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      master = audioCtx.createGain();
+      master.connect(audioCtx.destination);
+    }
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    return true;
+  }
+  // one note: optional glide to `to` Hz over its length
+  function tone(freq, dur, type = "triangle", vol = 0.03, delay = 0, to = 0) {
     try {
-      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtx.state === "suspended") audioCtx.resume();
+      if (!audioReady()) return;
       const t0 = audioCtx.currentTime + delay;
-      const osc = audioCtx.createOscillator();
-      const g = audioCtx.createGain();
+      const osc = audioCtx.createOscillator(), g = audioCtx.createGain();
       osc.type = type;
-      osc.frequency.value = freq;
-      g.gain.setValueAtTime(vol, t0);
+      osc.frequency.setValueAtTime(freq, t0);
+      if (to) osc.frequency.exponentialRampToValueAtTime(to, t0 + dur);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.linearRampToValueAtTime(vol, t0 + Math.min(0.012, dur / 4));   // soft attack, no click
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-      osc.connect(g).connect(audioCtx.destination);
+      osc.connect(g).connect(master);
       osc.start(t0);
-      osc.stop(t0 + dur);
+      osc.stop(t0 + dur + 0.02);
     } catch (_) { /* audio is optional */ }
+  }
+  // a puff of filtered noise: a whoosh or a soft footfall
+  function puff(dur, vol, filter, hz, delay = 0) {
+    try {
+      if (!audioReady()) return;
+      if (!noiseBuf) {
+        noiseBuf = audioCtx.createBuffer(1, audioCtx.sampleRate, audioCtx.sampleRate);
+        const d = noiseBuf.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      }
+      const t0 = audioCtx.currentTime + delay;
+      const src = audioCtx.createBufferSource(), flt = audioCtx.createBiquadFilter(), g = audioCtx.createGain();
+      src.buffer = noiseBuf;
+      flt.type = filter; flt.frequency.value = hz;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.linearRampToValueAtTime(vol, t0 + Math.min(0.01, dur / 3));
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      src.connect(flt).connect(g).connect(master);
+      src.start(t0, Math.random() * 0.5);
+      src.stop(t0 + dur + 0.02);
+    } catch (_) { /* audio is optional */ }
+  }
+  const sfx = {
+    start()  { tone(523, 0.09, "triangle", 0.035); tone(784, 0.12, "triangle", 0.035, 0.08); },
+    jump()   { tone(480, 0.1, "triangle", 0.035, 0, 760); },
+    land()   { puff(0.05, 0.03, "bandpass", 1300); tone(420, 0.05, "triangle", 0.012, 0, 330); },   // a light paw pat
+    duck()   { puff(0.13, 0.04, "lowpass", 650); },
+    step(k)  { puff(0.035, 0.014, "bandpass", k ? 1000 : 780); },
+    chime(big) {
+      tone(784, 0.16, "triangle", 0.03); tone(1047, 0.2, "triangle", 0.03, 0.11);
+      if (big) tone(1319, 0.28, "triangle", 0.03, 0.22);
+    },
+    over()   { tone(540, 0.5, "sine", 0.05, 0, 200); tone(270, 0.5, "triangle", 0.02, 0.02, 120); },
+    dusk()   { tone(520, 0.7, "sine", 0.022, 0, 330); },
+    dawn()   { tone(330, 0.7, "sine", 0.022, 0, 560); },
+  };
+  function setMuted(m) {
+    muted = m;
+    try { localStorage.setItem(MUTE_KEY, m ? "1" : "0"); } catch (_) {}
+    if (!m) sfx.start();
   }
 
   // ---------- theme ----------
@@ -431,6 +486,7 @@
   let spawnLog = [];    // recent {name, gap} spawns, for tuning (see elmio.spawns)
   let flashT = 0;             // score milestone flash
   let lastMilestone = 0;
+  let lastC = 0, stepT = 0, stepK = 0;   // for the dusk/dawn sweeps and the footsteps
   let overAt = 0;             // timestamp of death, for restart lockout
   let timeNow = 0;
   let jumpBuffer = 0;         // pressed jump slightly before landing
@@ -549,6 +605,7 @@
     score = 0;
     worldX = 0;
     lastMilestone = 0;
+    lastC = 0; stepT = 0;
     flashT = 0;
     jumpBuffer = 0;
     player.y = GROUND; player.vy = 0; player.grounded = true;
@@ -750,7 +807,7 @@
     player.grounded = false;
     player.ducking = false;
     jumpBuffer = 0;
-    beep(560, 0.08);
+    sfx.jump();
     haptic(8);
   }
 
@@ -759,11 +816,11 @@
     if (player.state === "title") {
       player.state = "starting";
       player.animT = 0;
-      beep(700, 0.07);
+      sfx.start();
       return;
     }
     if (player.state === "over") {
-      if (performance.now() - overAt > 500) { reset(); beep(700, 0.07); }
+      if (performance.now() - overAt > 500) { reset(); sfx.start(); }
       return;
     }
     if (player.state !== "run") return;
@@ -777,7 +834,7 @@
 
   function duckPress() {
     if (player.state !== "run") { jumpAction(); return; }   // start / restart
-    if (!player.ducking) player.duckT = 0;
+    if (!player.ducking) { player.duckT = 0; sfx.duck(); }
     noteAction("duck");
     player.ducking = true;
     haptic(6);
@@ -849,7 +906,7 @@
       hi = Math.floor(score);
       localStorage.setItem(HI_KEY, hi);
     }
-    beep(160, 0.3, "sawtooth", 0.05);
+    sfx.over();
     haptic(35);
   }
 
@@ -877,6 +934,7 @@
         player.vy = 0;
         player.grounded = true;
         player.landT = 0;
+        sfx.land();
         if (jumpBuffer > 0) doJump();
       }
     }
@@ -887,12 +945,22 @@
     moveRacers(dt, vx);
     score += speed * dt * 0.025;   // reference speed: scores compare across devices
 
+    // footsteps while running on the road, and a sweep as the light turns
+    if (player.grounded) {
+      stepT += dt;
+      if (stepT >= 0.2) { stepT -= 0.2; sfx.step(stepK ^= 1); }
+    }
+    const cc = (score % CYCLE_M) / CYCLE_M;
+    if (lastC < 0.30 && cc >= 0.30) sfx.dusk();
+    if (lastC < 0.86 && cc >= 0.86) sfx.dawn();
+    lastC = cc;
+
     // milestone flash + jingle
     const ms = Math.floor(score / 100);
     if (ms > 0 && ms !== lastMilestone) {
       lastMilestone = ms;
       flashT = 1.2;
-      beep(780, 0.08); beep(1040, 0.1, "square", 0.03, 0.1);
+      sfx.chime(ms % 5 === 0);   // a third note every 500 m
     }
     if (flashT > 0) flashT -= dt;
 
@@ -1378,6 +1446,12 @@
 
   // Mobile browser chrome eats a lot of a landscape screen; offer a way out.
   // Desktop has F11, so the button is a touch-only affordance.
+  const muteBtn = document.getElementById("mute");
+  if (muteBtn) {
+    const paint = () => { muteBtn.classList.toggle("off", muted); muteBtn.setAttribute("aria-pressed", String(muted)); };
+    paint();
+    muteBtn.addEventListener("click", () => { setMuted(!muted); paint(); muteBtn.blur(); });
+  }
   const fsBtn = document.getElementById("fullscreen");
   const canFullscreen = !!document.documentElement.requestFullscreen;
 

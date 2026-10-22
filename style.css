@@ -80,7 +80,7 @@ canvas {
   user-select: none;
 }
 
-#fullscreen {
+#fullscreen, #mute {
   position: absolute;
   top: 6px;
   left: 8px;
@@ -97,6 +97,9 @@ canvas {
   touch-action: manipulation;
 }
 #fullscreen[hidden] { display: none; }
+/* the sound toggle sits beside the fullscreen one when that is shown; the diagonal marks it as off */
+#fullscreen:not([hidden]) + #mute { left: 48px; }
+#mute.off { opacity: 0.35; text-decoration: line-through; }
 
 .hint {
   flex: 0 0 auto;

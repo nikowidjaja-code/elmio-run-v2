@@ -46,6 +46,14 @@ moment and fires on touchdown.
 - **Speed:** starts at 250, gains 5 per second, caps at 700. The best score is
   saved in `localStorage`.
 
+### Sound
+
+All sounds are synthesized with WebAudio, so there are no audio files: a jump
+chirp, a light paw-pat landing, a duck whoosh, quiet footsteps, a chime every 100 m
+(a third note every 500 m), a falling glide at game over, and a slow sweep as
+dusk and dawn begin. The ♪ button in the corner of the play field mutes it, and
+the choice is remembered on the device.
+
 ### Obstacles
 
 Things you might find on a closed street. Groups come from a weighted table
