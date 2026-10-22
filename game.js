@@ -81,6 +81,7 @@
     ["stand4",   2, 0, [8, 8, 26, 25]],   // sit-down transition stand
     ["duck1",    2, 1, [8, 12, 26, 25]],  // crouch run A (head dropped onto the body)
     ["duck2",    2, 2, [8, 13, 26, 25]],  // crouch run B
+    ["duckmid",  1, 2, [8, 10, 26, 25]],  // half-way into/out of the crouch (head dropped 2 rows)
     // gallop: the air frames (1, 5, 6) are drawn lifted off the ground; bb[1] is
     // the hitbox top only, so it stays at the old run cycle's 8/9 and the lift is forgiving.
     ["gallop1",  2, 3, [8, 8, 26, 25]],   // stretched out in the air
@@ -353,7 +354,9 @@
     y: GROUND, vy: 0, grounded: true,
     ducking: false, animT: 0, state: "title", // title | starting | run | over
     overT: 0,
+    duckT: 99, duckOutT: 99,   // seconds since the duck started / ended (99 = long ago)
   };
+  const DUCK_TRANS = 0.05;     // how long the half-way frame shows going into / out of a duck
   let obstacles = [];   // {kind, spr, x, alt, animT, phase}
   let clouds = [];
   let speed = SPEED0;   // reference units/s; multiply by f for real movement
@@ -498,6 +501,7 @@
     nightTarget = 0;
     player.y = GROUND; player.vy = 0; player.grounded = true;
     player.ducking = false; player.animT = 0;
+    player.duckT = 99; player.duckOutT = 99;
     player.state = "run";
     spawnLog = [];
     tailArrival = timeNow + 1.6;   // a beat of empty road to get going
@@ -648,8 +652,10 @@
       if (player.vy > 140 * f)  return F.tuck;
       return F.stretch;
     }
-    return player.ducking ? animFrame("duck", player.animT)
-                          : animFrame("run", player.animT);
+    if (player.ducking) {
+      return player.duckT < DUCK_TRANS ? F.duckmid : animFrame("duck", player.animT);
+    }
+    return player.duckOutT < DUCK_TRANS ? F.duckmid : animFrame("run", player.animT);
   }
 
   function playerHitbox(f) {
@@ -700,10 +706,14 @@
 
   function duckPress() {
     if (player.state !== "run") { jumpAction(); return; }   // start / restart
+    if (!player.ducking) player.duckT = 0;
     player.ducking = true;
     haptic(6);
   }
-  function duckRelease() { player.ducking = false; }
+  function duckRelease() {
+    if (player.ducking) player.duckOutT = 0;
+    player.ducking = false;
+  }
 
   window.addEventListener("keydown", e => {
     if (["Space", "ArrowUp", "ArrowDown", "KeyW", "KeyS"].includes(e.code)) e.preventDefault();
@@ -772,6 +782,7 @@
     night += Math.sign(nightTarget - night) * Math.min(dt / 1.2, Math.abs(nightTarget - night));
 
     player.animT += dt;
+    player.duckT += dt; player.duckOutT += dt;
 
     if (player.state === "starting" && animDone("standUp", player.animT)) reset();
 
@@ -1024,7 +1035,7 @@
     get speed()  { return speed; },
     get ducking(){ return player.ducking; },
     get world()  { return { W, H, GROUND, f, U, ppu, css: [stage.clientWidth, stage.clientHeight] }; },
-    duck(on)     { player.ducking = !!on; },
+    duck(on)     { on ? (player.ducking || (player.duckT = 0)) : (player.ducking && (player.duckOutT = 0)); player.ducking = !!on; },
     jump()       { jumpAction(); },
     relayout()   { layout(); },
     tick(dt = 1 / 60, n = 1) { for (let i = 0; i < n; i++) update(dt); render(); },

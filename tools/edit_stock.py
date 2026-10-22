@@ -2,7 +2,8 @@
 
 Pass 1: recolour to his golden coat (guideline photos) and paint white socks.
 Pass 3: two real crouch frames for ducking (cells (2,1) and (2,2)), built from the
-        finished stand1/stand2 frames: head lowered onto the body, legs unchanged.
+        finished stand1/stand2 frames: head lowered onto the body, legs unchanged; plus a
+        half-way 'duckmid' frame at (1,2) for the transition into and out of the duck.
 Pass 4: a 12-frame gallop (6 key poses + 6 in-betweens in rows 8-9, which this script
         adds to the sheet): a 6-frame gallop (cells (2,3), (4,2), (4,3), (6,1), (6,2), (6,3)): the finished
         stand frames' head/body/tail with the legs redrawn per pose, bouncing up in the air.
@@ -93,8 +94,12 @@ def main():
                                 op[x0 + i, y + 1] = WHITE
     # pass 3: crouch frames. The head (everything right of HEAD_X and above its
     # chin row) drops DROP rows onto the body; the body, legs and tail stay put.
-    HEAD_X, DROP = 14, 4
-    for (r, c), (dr, dc), chin in (((1, 0), (2, 1), 17), ((1, 1), (2, 2), 18)):
+    HEAD_X = 14
+    # (source cell, target cell, chin row, rows the head drops): two crouch-run frames, and the
+    # half-way "duckmid" frame (head dropped 2 of the 4 rows) shown for a blink when the duck
+    # starts and ends
+    for (r, c), (dr, dc), chin, DROP in (((1, 0), (2, 1), 17, 4), ((1, 1), (2, 2), 18, 4),
+                                          ((1, 0), (1, 2), 17, 2)):
         cell = out.crop((c * CELL, r * CELL, c * CELL + CELL, r * CELL + CELL))
         body, head = cell.copy(), Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
         bp, hp = body.load(), head.load()
