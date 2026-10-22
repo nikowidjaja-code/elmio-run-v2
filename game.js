@@ -163,20 +163,39 @@
     im.src = src;
   }))).then(() => { assetsReady = true; });
 
-  // ---------- food obstacle sprites (procedural pixel art) ----------
-  // The classic cat-food lineup: whole fish, fishbone, open pate can,
-  // kibble pile, kibble bag, wet food pouch.
+  // ---------- obstacle sprites (procedural pixel art) ----------
+  // A Car Free Day street: traffic cone, road barrel, fire hydrant and puddle on the
+  // ground; pigeons, a rolling ball and a butterfly in the air; plus the fish and
+  // fishbone treats left on the road. Each matches the footprint of the sprite it
+  // replaced, so the spawn timing below is unchanged.
   const PAL = {
-    O: "#2e1e12",               // outline, matches the cats' outline tone
-    S: "#cfcfcf", s: "#9d9d9d", // tin silver
-    R: "#c0504a", W: "#f3eee3", F: "#4a6a8a", // can label red / cream / fish print
-    B: "#d99a4e", D: "#a86a2e", // kibble bag orange / fold
-    T: "#5aa3a0", E: "#3f7d7b", // wet food pouch teal / seal
-    k: "#8a5a2e", K: "#5f3c1c", // kibble pellet light / dark
-    P: "#e8958c", p: "#d6786e", // pate pink / shade
-    b: "#7fa8c9", d: "#5b83a6", // fish body / back
-    w: "#f0f4f7", e: "#1e1e1e", // fish belly / eye
-    N: "#e8e2d0",               // bone white
+    O: "#2e1e12",  // outline, matches the cats' outline tone
+    S: "#cfcfcf",  // silver / light-grey shade
+    W: "#f3eee3",  // white
+    N: "#e8e2d0",  // bone white
+    b: "#7fa8c9",  // fish body
+    d: "#5b83a6",  // fish back
+    w: "#f0f4f7",  // fish belly
+    e: "#1e1e1e",  // fish / pigeon eye
+    C: "#f0872e",  // traffic cone orange
+    c: "#cf6a1d",
+    H: "#e0562a",  // road barrel red-orange
+    h: "#b8401c",
+    Y: "#d9473f",  // fire hydrant red
+    y: "#a8322d",
+    a: "#8fb8d8",  // puddle water
+    A: "#c4e0f2",
+    n: "#6a93b5",
+    G: "#9aa0aa",  // pigeon grey
+    g: "#737a86",
+    Z: "#e6e9ee",
+    V: "#8f7fb0",  // pigeon neck sheen
+    J: "#e0a050",  // pigeon beak
+    R: "#c0504a",  // ball red
+    r: "#9c3a35",
+    L: "#4a7fc8",  // butterfly blue
+    l: "#9cc0ee",
+    M: "#2f5da0",
   };
   function makeSprite(rows) {
     const w = rows[0].length, h = rows.length;
@@ -217,72 +236,109 @@
       "........ONO..ONO.....",
       "........OOO..OOO.....",
     ]),
-    can: makeSprite([          // open tin, pate dome, fish label
-      "....OOOOOO....",
-      "..OOPPPPPPOO..",
-      ".OPPPPPPPPPPO.",
-      ".OpPPPPPPPPpO.",
-      "OSSSSSSSSSSSSO",
-      "OssssssssssssO",
-      "ORRRRRRRRRRRRO",
-      "ORWWWWWWWWWWRO",
-      "ORWFFFFFFWWWRO",
-      "ORWWFFFFWWWWRO",
-      "ORWWWWWWWWWWRO",
-      "ORRRRRRRRRRRRO",
-      "OssssssssssssO",
-      ".OOOOOOOOOOOO.",
+    cone: makeSprite([
+      "......OO......",
+      ".....OCCO.....",
+      ".....OCcO.....",
+      "....OWWWWO....",
+      "....OWWWSO....",
+      "...OCCCCCcO...",
+      "...OCCCCCcO...",
+      "..OWWWWWWWSO..",
+      "..OWWWWWWWSO..",
+      ".OCCCCCCCCCcO.",
+      ".OCCCCCCCCCcO.",
+      "OOOOOOOOOOOOOO",
+      "OccccccccccccO",
+      "OOOOOOOOOOOOOO",
     ]),
-    kibble: makeSprite([       // pyramid of dry kibble pellets
-      "...OOOO..OOOO...",
-      "...OkKO..OkKO...",
-      "...OKkO..OKkO...",
-      "OOOOOOOOOOOOOOOO",
-      "OkKOOkKOOkKOOkKO",
-      "OKkOOKkOOKkOOKkO",
-      "OOOOOOOOOOOOOOOO",
-    ]),
-    bag: makeSprite([          // dry kibble bag, big fish label
+    barrel: makeSprite([
       "..OOOOOOOOOOOO..",
-      ".ODDDDDDDDDDDDO.",
-      ".ODDDDDDDDDDDDO.",
-      ".OBBBBBBBBBBBBO.",
-      ".OBBBBBBBBBBBBO.",
-      "OBBBBBBBBBBBBBBO",
-      "OBBWWWWWWWWWWBBO",
-      "OBWWWWWWWWWWWWBO",
-      "OBWWWFFFFWWWWWBO",
-      "OBWWFFFFFFWFWWBO",
-      "OBWFeFFFFFFFFWBO",
-      "OBWWFFFFFFWFWWBO",
-      "OBWWWFFFFWWWWWBO",
-      "OBBWWWWWWWWWWBBO",
-      "OBBBBBBBBBBBBBBO",
-      "OBBBBBBBBBBBBBBO",
-      "OBBkBBkBBkBBkBBO",
-      "OBBBBBBBBBBBBBBO",
-      "OBBBBBBBBBBBBBBO",
-      "OBBBBBBBBBBBBBBO",
-      ".OBBBBBBBBBBBBO.",
+      ".OSSSSSSSSSSSSO.",
+      "OHHHHHHHHHHHHHhO",
+      "OHHHHHHHHHHHHHhO",
+      "OHHHHHHHHHHHHHhO",
+      "OHHHHHHHHHHHHHhO",
+      "OWWWWWWWWWWWWWSO",
+      "OWWWWWWWWWWWWWSO",
+      "OWWWWWWWWWWWWWSO",
+      "OWWWWWWWWWWWWWSO",
+      "OHHHHHHHHHHHHHhO",
+      "OHHHHHHHHHHHHHhO",
+      "OHHHHHHHHHHHHHhO",
+      "OHHHHHHHHHHHHHhO",
+      "OWWWWWWWWWWWWWSO",
+      "OWWWWWWWWWWWWWSO",
+      "OWWWWWWWWWWWWWSO",
+      "OWWWWWWWWWWWWWSO",
+      "OHHHHHHHHHHHHHhO",
+      "OHHHHHHHHHHHHHhO",
+      "OHHHHHHHHHHHHHhO",
+      ".OOOOOOOOOOOOOO.",
+    ]),
+    hydrant: makeSprite([
+      "....OOOOO....",
+      "...OYYYYYO...",
+      "..OYYYYYYyO..",
+      "..OYYYYYYyO..",
+      "..OSSSSSSSO..",
+      "..OYYYYYYyO..",
+      "..OYYYYYYyO..",
+      ".OOYYYYYYyOO.",
+      "OSYYYYYYYYYSO",
+      ".OOYYYYYYyOO.",
+      "..OYYYYYYyO..",
+      "..OYYYYYYyO..",
+      "..OYYYYYYyO..",
+      ".OYYYYYYYYyO.",
+      "OSSSSSSSSSSSO",
+      "OOOOOOOOOOOOO",
+    ]),
+    puddle: makeSprite([
+      "....OOOOOOOO....",
+      "..OOaaaaaaaaOO..",
+      ".OaaAAaaaaaaaaO.",
+      "OaaaAaaaaaaaaaaO",
+      "OnaaaaaaaaaaaanO",
+      ".OnnaaaaaaaannO.",
       "..OOOOOOOOOOOO..",
     ]),
-    pouch: makeSprite([        // wet food pouch, fish label
-      ".OOOOOOOOOOO.",
-      "OEEEEEEEEEEEO",
-      "OTTTTTTTTTTTO",
-      "OTWWWWWWWWWTO",
-      "OTWWWWWWWWWTO",
-      "OTWWFFFWWWWTO",
-      "OTWFFFFFWFWTO",
-      "OTWeFFFFFFWTO",
-      "OTWFFFFFWFWTO",
-      "OTWWFFFWWWWTO",
-      "OTWWWWWWWWWTO",
-      "OTTTTTTTTTTTO",
-      "OTTTTTTTTTTTO",
-      "OTTTTTTTTTTTO",
-      "OTTTTTTTTTTTO",
-      ".OOOOOOOOOOO.",
+    pigeon: makeSprite([
+      "..........OO.OO.....",
+      ".........OggOggO....",
+      "...OOO...OggggggO...",
+      ".OOGGGO..OggZZggO...",
+      "OJGeVGOOOgggggggGO..",
+      ".OGGGGGGGGGGGGGGGGO.",
+      "..OGGGZZZZZZZZGGGGGO",
+      "...OGGZZZZZZZZGGGGO.",
+      "....OOGGGGGGGGGGOO..",
+      "......OOOOOOOOOO....",
+    ]),
+    ball: makeSprite([
+      "...OOOO...",
+      "..ORRRRO..",
+      ".ORWWRRRO.",
+      "ORWWRRRRRO",
+      "ORRRRRRRRO",
+      "ORRRRRRRRO",
+      "ORRRRRRRrO",
+      ".ORRRRRrO.",
+      "..OrrrrO..",
+      "...OOOOO..",
+    ]),
+    butterfly: makeSprite([
+      "........O..O........",
+      "....OO.OMOOMO.OO....",
+      "..OOLLO.OMMO.OLLOO..",
+      ".OLLLLLOOMMOOLLLLLO.",
+      "OLLlllLLOMMOLLlllLLO",
+      "OLLllLLLLMMLLLLllLLO",
+      ".OLLLLLLLMMLLLLLLLO.",
+      "..OLLLLLOMMOLLLLLO..",
+      "..OLLLLOOMMOOLLLLO..",
+      "...OLLO.OMMO.OLLO...",
+      "....OO...OO...OO....",
     ]),
   };
   // ---------- drawing helpers ----------
@@ -542,20 +598,20 @@
     // three only once the scroll is fast enough for a tapped (cut-short) jump
     // to still clear the whole school
     { name: "fish3",     w: 4, minSpeed: 480, make: row(SPR.fish, 3, 6) },
-    { name: "can",       w: 6, make: row(SPR.can, 1, 0) },
-    { name: "can2",      w: 4, make: row(SPR.can, 2, 8) },
-    { name: "bag",       w: 6, make: row(SPR.bag, 1, 0) },
-    { name: "pouch",     w: 5, make: row(SPR.pouch, 1, 0) },
-    { name: "kibble",    w: 5, make: row(SPR.kibble, 1, 0) },
+    { name: "cone",      w: 6, make: row(SPR.cone, 1, 0) },
+    { name: "cone2",     w: 4, make: row(SPR.cone, 2, 8) },
+    { name: "barrel",    w: 6, make: row(SPR.barrel, 1, 0) },
+    { name: "hydrant",   w: 5, make: row(SPR.hydrant, 1, 0) },
+    { name: "puddle",    w: 5, make: row(SPR.puddle, 1, 0) },
     { name: "bone",      w: 3, make: row(SPR.fishbone, 1, 0) },
     // --- airborne ---
-    { name: "flyLow",    w: 10, air: 1, from: 50,  make: flock(FLY_LOW, 1) },
-    { name: "flyMid",    w: 18, air: 1, from: 50,  duck: 1, make: flock(FLY_MID, 1) },
+    { name: "flyLow",    w: 10, air: 1, from: 50,  make: flock(FLY_LOW, 1, SPR.ball) },
+    { name: "flyMid",    w: 18, air: 1, from: 50,  duck: 1, make: flock(FLY_MID, 1, SPR.pigeon) },
     { name: "flyBone",   w: 10, air: 1, from: 90,  duck: 1, make: flock(FLY_MID, 1, SPR.fishbone) },
-    { name: "flyMid2",   w: 14, air: 1, from: 160, duck: 1, make: flock(FLY_MID, 2) },
-    { name: "flyMid3",   w: 10, air: 1, from: 320, duck: 1, make: flock(FLY_MID, 3) },
+    { name: "flyMid2",   w: 14, air: 1, from: 160, duck: 1, make: flock(FLY_MID, 2, SPR.pigeon) },
+    { name: "flyMid3",   w: 10, air: 1, from: 320, duck: 1, make: flock(FLY_MID, 3, SPR.pigeon) },
     { name: "flyBone2",  w: 8, air: 1, from: 420, duck: 1, make: flock(FLY_MID, 2, SPR.fishbone) },
-    { name: "flyHigh",   w: 8, air: 1, from: 110, make: flock(FLY_HIGH, 1) },
+    { name: "flyHigh",   w: 8, air: 1, from: 110, make: flock(FLY_HIGH, 1, SPR.butterfly) },
   ];
 
   function pickPattern() {
@@ -1118,6 +1174,7 @@
     duck(on)     { on ? (player.ducking || (player.duckT = 0)) : (player.ducking && (player.duckOutT = 0)); player.ducking = !!on; },
     jump()       { jumpAction(); },
     relayout()   { layout(); },
+    spawn(name, x) { const p = PATTERNS.find(q => q.name === name); if (p) p.make(x); },   // place a pattern at x (for previews)
     tick(dt = 1 / 60, n = 1) { for (let i = 0; i < n; i++) update(dt); render(); },
     get spawns() { return spawnLog.slice(); },
     get patterns() {

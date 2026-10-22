@@ -53,22 +53,25 @@ a headband, and a landing-squash frame for the jump. The other cats do not get h
 
 ## Obstacles
 
-Small, flat, simple sprites (7 new ones: cone, scratching post, box with ears, toy mouse, pigeon,
-butterfly, rolling yarn ball). A sleeping-loaf cat was considered and left out for now; it could
-replace the fishbone later (similar footprint). Each new sprite matches the footprint of the sprite it replaces (within
-one pixel), so the tuned spawn timing and jump clearance stay valid.
+Everything on the road is something you would really find on a closed city street. Small, flat,
+simple sprites, drawn in `tools/obstacle_sprites.py` (one source of truth) and built into
+`game.js`. Each new sprite matches the footprint of the sprite it replaced (within one pixel), so
+the tuned spawn timing and jump clearance stay valid.
 
-| Replaces | New sprite |
+| Replaced | New sprite |
 | --- | --- |
 | Can, 14x14 | Orange traffic cone (single or pairs) |
-| Bag, 16x22 | Scratching post |
-| Pouch, 13x16 | Cardboard box with two ears poking out of the top |
-| Kibble pile, 16x7 | Toy mouse |
+| Bag, 16x22 | Road barrel (red-orange and white stripes) |
+| Pouch, 13x16 | Fire hydrant (red) |
+| Kibble pile, 16x7 | Puddle (cats hate water) |
 | Fish and fishbone on the ground | Kept as they are, as treats left on the road |
-| Fish at head height (duck) | Pigeon |
-| Fishbone at head height (duck) | Butterfly |
-| Low flyer (jump) | Rolling yarn ball |
-| High fake-out | Butterfly |
+| Fish at head height (duck) | Pigeon (single, or a flock of two or three) |
+| Fishbone at head height | Kept |
+| Low flyer (jump) | Rolling ball |
+| High fake-out | Butterfly (a nod to the toy butterfly in the owner's video) |
+
+Left out on purpose: indoor cat things (scratching post, box with ears, toy mouse, yarn ball), and
+a sleeping-loaf cat (could replace the fishbone later).
 
 ## Progress and HUD
 
@@ -100,7 +103,7 @@ backdrop, anything with vehicles.
 1. This file.
 2. World: multi-lane road, city skyline backdrop, scrolling roadside signs, the other cats running
    in their own lanes. Done.
-3. Obstacles: the 7 new sprites, ground first, then the flyers.
+3. Obstacles: the 7 new sprites. Built, in review.
 4. Elmio: headband and the landing squash.
 5. HUD: the title line (the distance signs are already done in step 2).
 6. Clean-up: remove the unused gallop frames and bring the README up to date.
