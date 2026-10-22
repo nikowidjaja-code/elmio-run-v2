@@ -25,17 +25,24 @@ ENERGY 2 / RHYTHM 1 / MOTION 1
 
 - ENERGY 2: friendly and clear, never loud.
 - RHYTHM 1: a calm, uniform world. One road, one backdrop.
-- MOTION 1: the road's lane dashes scroll (that is what shows speed) and the characters animate.
-  The backdrop is static.
+- MOTION 1: the road's lane dashes and the roadside signs scroll (that is what shows speed) and
+  the characters animate. The city skyline is static.
 
 ## The world
 
-- **Ground:** asphalt road with dashed white lane markings that scroll. A curb line at the edge.
-- **Backdrop:** one static picture, painted once. Sky, a flat green hedge band, a few simple tree
-  shapes, and a single "CAR FREE DAY" banner. No vehicles, no people, no parallax.
-- **Light:** morning that brightens toward midday. No night mode. It is a colour shift only.
-- **The crowd:** the five other cats (black, grey, white, calico, colorpoint) keep running faded
-  in the distance. Nothing else is added to them.
+- **Ground:** a multi-lane asphalt road with a yellow curb and a dashed white lane line that scrolls.
+  Elmio and every obstacle use the top lane; the lanes below are for the other cats.
+- **Backdrop:** a city, kept sparse: a few flat buildings (about six across the screen, with sky
+  between them) and two street trees, painted once and static. No vehicles, no people, no parallax.
+- **Roadside signs scroll with the road** (they are part of the road, not the backdrop): a
+  "CAR FREE DAY" sign near the start that scrolls away, then a distance sign that passes Elmio at
+  250 m, 500 m, 750 m, 1 km, 1.25 km and so on.
+- **Light:** the sky stays the warm morning peach the owner chose. No night mode, no light change.
+- **The crowd:** the five other cats (black, grey, white, calico, colorpoint) run the same road in
+  full colour, in the two lanes below Elmio's. Each has its own pace: a faster one slowly passes
+  Elmio, a slower one falls behind, and a cat that leaves one side comes back on the other. They sit
+  on the title and game-over screens. They stay below the obstacle line, so they never appear to
+  pass through an obstacle. Nothing else is added to them.
 - **Paper look:** keep the existing cream, flat, pixel-crisp look of the page.
 
 ## Elmio
@@ -65,8 +72,8 @@ one pixel), so the tuned spawn timing and jump clearance stay valid.
 
 ## Progress and HUD
 
-Score becomes distance: metres, then km. A small km flag every 500 m at first (tunable after
-playtesting). A "Car Free Day" line on the title screen. The best score is still saved on the
+Score is distance: one point is one metre. A roadside sign every 250 m (labelled in m, then km).
+A "Car Free Day" line on the title screen. The best score is still saved on the
 device. A daily streak is a possible later step, not part of the first pass.
 
 ## Palette direction (not final)
@@ -91,8 +98,9 @@ backdrop, anything with vehicles.
 ## Plan, in order (each step ends with a preview, the owner's approval, then a commit)
 
 1. This file.
-2. World: road, static backdrop, morning light.
+2. World: multi-lane road, city skyline backdrop, scrolling roadside signs, the other cats running
+   in their own lanes. Done.
 3. Obstacles: the 7 new sprites, ground first, then the flyers.
 4. Elmio: headband and the landing squash.
-5. HUD: distance, km flags, the title line.
+5. HUD: the title line (the distance signs are already done in step 2).
 6. Clean-up: remove the unused gallop frames and bring the README up to date.

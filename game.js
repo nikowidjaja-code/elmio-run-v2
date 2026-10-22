@@ -4,7 +4,7 @@
 
    All drawn imagery comes from the 6 cat sprite sheets in
    /assets (player = orange cat, obstacles = the other cats).
-   Ground, clouds, stars and text are procedural canvas shapes.
+   The road, the backdrop and text are procedural canvas shapes.
    ============================================================ */
 
 (() => {
@@ -35,7 +35,12 @@
   const RUNWAY_MIN = 700;
   const RUNWAY_MAX = 900;
   const RUNWAY_FLOOR = 620;     // never zoom in past this to trim sky
-  const WORLD_H_MIN = 235;      // units needed for jump arc + HUD headroom
+  // Extra road below Elmio's lane: the other cats run in their own lanes down there,
+  // fully below the obstacles, so they never appear to pass through them.
+  const ROAD_EXTRA = 36;
+  // units needed: ~207 of sky for the jump arc + HUD headroom (as before), plus the road strip
+  // (~33) and the extra road, so the sky above the ground never shrinks
+  const WORLD_H_MIN = 207 + 33 + ROAD_EXTRA;
   const WORLD_H_MAX = 520;      // past this the extra height is dead sky
 
   let W = REF_W;                // visible width in units
@@ -61,7 +66,7 @@
   const SPEEDMAX= 820;
   const SPEEDUP = 10.4;       // reference units/s gained per second
   const JUMP_BUFFER = 0.12;   // s of "I pressed just before landing" grace
-  const NIGHT_EVERY = 500;    // score interval for day/night flip
+  const PTS_TO_UNITS = 40;    // world units of road per point (score += speed * 0.025 per second)
   const HI_KEY  = "elmio-run.hi";
 
   // ---------- sprite sheet metadata ----------
@@ -335,19 +340,13 @@
     } catch (_) { /* audio is optional */ }
   }
 
-  // ---------- theme (day / night) ----------
-  const DAY   = { bg: [247, 243, 234], fg: [74, 59, 42] };
-  const NIGHT = { bg: [24, 23, 38],    fg: [232, 226, 208] };
-  let nightTarget = 0;   // 0 = day, 1 = night
-  let night = 0;         // animated value
-
-  function lerp(a, b, t) { return a + (b - a) * t; }
-  function themeColor(day, nite) {
-    const c = day.map((v, i) => Math.round(lerp(v, nite[i], night)));
-    return `rgb(${c[0]},${c[1]},${c[2]})`;
-  }
-  const bgColor = () => themeColor(DAY.bg, NIGHT.bg);
-  const fgColor = () => themeColor(DAY.fg, NIGHT.fg);
+  // ---------- theme ----------
+  // Car Free Day is a morning event: the sky stays the same warm morning peach.
+  const SKY = [252, 234, 214];
+  const INK = [74, 59, 42];
+  const rgb = c => `rgb(${c[0]},${c[1]},${c[2]})`;
+  const bgColor = () => rgb(SKY);
+  const fgColor = () => rgb(INK);
 
   // ---------- game state ----------
   const player = {
@@ -358,7 +357,6 @@
   };
   const DUCK_TRANS = 0.05;     // how long the half-way frame shows going into / out of a duck
   let obstacles = [];   // {kind, spr, x, alt, animT, phase}
-  let clouds = [];
   let speed = SPEED0;   // reference units/s; multiply by f for real movement
   let score = 0;
   let hi = Number(localStorage.getItem(HI_KEY) || 0);
@@ -367,7 +365,6 @@
   let pending = null;   // the group that will spawn next, chosen in advance
   let tailArrival = 0;  // timeNow at which the last group finishes passing the cat
   let spawnLog = [];    // recent {name, gap} spawns, for tuning (see elmio.spawns)
-  let cloudTimer = 0;
   let flashT = 0;             // score milestone flash
   let lastMilestone = 0;
   let overAt = 0;             // timestamp of death, for restart lockout
@@ -376,16 +373,14 @@
 
   // Scenery is laid out in world units, so it is rebuilt whenever the
   // viewport changes (see buildScenery).
-  let STARS = [];
   let SPECKLES = [];
   let SPECKLE_STRIP = 1800;   // width of the tiled ground-speckle strip
 
   // ---------- background racers ----------
-  // The other cat colors run along in the distance, each at its own depth:
-  // depth 0 = just far enough (bigger, bolder, wide fast drift),
-  // depth 1 = far far away (small, faint, high on the horizon, barely drifts).
-  // Drawn far-to-near so closer cats overlap distant ones.
-  // Identity (color, depth, drift) is fixed for the session; the screen-space
+  // The other cat colors run the same road in the two lanes below Elmio's. Each
+  // has its own pace relative to him (rel): a faster one slowly passes him, a
+  // slower one falls behind, and a cat that leaves one side comes back on the
+  // other. Identity (color, lane, pace) is fixed for the session; the screen
   // fields are recomputed by layoutRacers() on every resize.
   const racers = (() => {
     const picked = RACER_COLORS
@@ -398,50 +393,44 @@
       .sort((a, b) => a.r - b.r)
       .map(s => s.i);
     return picked
-      .map((c, i, arr) => {
-        const depth = i / (arr.length - 1);
-        return {
-          sheet: c.sheet,
-          depth,
-          scale: depth < 0.5 ? 2 : 1,
-          alpha: 0.45 - depth * 0.22,
-          slot: slots[i],
-          jitter: Math.random(),
-          ph: Math.random() * 6.28,
-          ampBase: (25 + Math.random() * 45) * (1 - 0.55 * depth),
-          wfreq: (0.18 + Math.random() * 0.2) * (1 - 0.4 * depth),
-          baseX: 0, yB: 0, amp: 0,
-        };
-      })
-      .sort((a, b) => b.depth - a.depth);
+      .map((c, i) => ({
+        sheet: c.sheet,
+        lane: i % 2,                                      // 0 = nearer Elmio's lane, 1 = the lane below
+        scale: 2,
+        slot: slots[i],
+        jitter: Math.random(),
+        ph: Math.random() * 6.28,
+        rel: (i % 2 ? -1 : 1) * (0.07 + Math.random() * 0.16) * (i < 2 ? 1 : -1),
+        x: null, yB: 0,
+      }))
+      .sort((a, b) => a.lane - b.lane);                   // upper lane first, so the lower lane overlaps it
   })();
 
   function layoutRacers() {
     const slotW = Math.max(40, (W - 300) / racers.length);
     for (const r of racers) {
-      r.baseX = 130 * f + r.slot * slotW + r.jitter * Math.max(0, slotW - 60);
-      r.yB = GROUND - 10 - r.depth * 20;
-      r.amp = r.ampBase * f;
+      r.yB = GROUND + (r.lane ? Math.max(48, H - GROUND - 4) : 34);   // each cat's feet: lane 0 just under Elmio's, lane 1 at the road's bottom
+      if (r.x === null) r.x = 130 * f + r.slot * slotW + r.jitter * Math.max(0, slotW - 60);
+    }
+  }
+
+  // each racer's drift against the scrolling road, wrapping at the screen edges
+  function moveRacers(dt, vx) {
+    for (const r of racers) {
+      r.x += r.rel * vx * dt;
+      if (r.x < -70) r.x = W + 20 + Math.random() * 60;
+      else if (r.x > W + 90) r.x = -60 - Math.random() * 60;
     }
   }
 
   function drawRacers() {
     const anim = player.state === "run" ? "run" : "sitIdle";
-    for (const r of racers) {
-      const x = r.baseX + Math.sin(timeNow * r.wfreq + r.ph) * r.amp;
-      ctx.globalAlpha = r.alpha;
-      drawFrame(r.sheet, animFrame(anim, timeNow + r.ph), x, r.yB, false, r.scale);
-    }
-    ctx.globalAlpha = 1;
+    for (const r of racers)
+      drawFrame(r.sheet, animFrame(anim, timeNow + r.ph), r.x, r.yB, false, r.scale);
   }
 
   // ---------- layout ----------
   function buildScenery() {
-    const rs = seeded(42);
-    STARS = [];
-    for (let i = 0; i < 22; i++)
-      STARS.push({ x: rs() * W, y: GROUND * (0.05 + rs() * 0.45), p: rs() * 6 });
-
     const rk = seeded(7);
     SPECKLE_STRIP = Math.max(1200, W * 2);
     const band = Math.max(4, H - GROUND - 8);
@@ -475,15 +464,15 @@
     W = w;
     ppu = canvas.width / W;
     H = canvas.height / ppu;                    // exact, no distortion
-    GROUND = Math.round(H - clamp(H * 0.12, 24, 50));
+    GROUND = Math.round(H - clamp(H * 0.12, 24, 50) - ROAD_EXTRA);
     f = W / REF_W;
     U = W / cssW;
 
     // Carry a game in progress over to the new grid instead of restarting it.
     const k = W / prevW;
     for (const o of obstacles) o.x *= k;
-    for (const c of clouds) { c.x *= k; c.y *= H / prevH; c.s *= k; }
     worldX *= k;
+    for (const r of racers) if (r.x !== null) r.x *= k;
     player.vy *= k;
     player.y = player.grounded ? GROUND : player.y + (GROUND - prevGround);
 
@@ -498,7 +487,6 @@
     lastMilestone = 0;
     flashT = 0;
     jumpBuffer = 0;
-    nightTarget = 0;
     player.y = GROUND; player.vy = 0; player.grounded = true;
     player.ducking = false; player.animT = 0;
     player.duckT = 99; player.duckOutT = 99;
@@ -778,8 +766,6 @@
 
   function update(dt) {
     timeNow += dt;
-    // day/night crossfade
-    night += Math.sign(nightTarget - night) * Math.min(dt / 1.2, Math.abs(nightTarget - night));
 
     player.animT += dt;
     player.duckT += dt; player.duckOutT += dt;
@@ -807,6 +793,7 @@
     // world
     speed = Math.min(SPEEDMAX, speed + SPEEDUP * dt);
     worldX += vx * dt;
+    moveRacers(dt, vx);
     score += speed * dt * 0.025;   // reference speed: scores compare across devices
 
     // milestone flash + jingle
@@ -818,9 +805,6 @@
     }
     if (flashT > 0) flashT -= dt;
 
-    // day/night flip
-    nightTarget = Math.floor(score / NIGHT_EVERY) % 2;
-
     // obstacles
     nextSpawn -= speed * dt;
     if (nextSpawn <= 0) spawnPending();
@@ -830,16 +814,6 @@
     }
     obstacles = obstacles.filter(o => o.x > -140);
 
-    // clouds (day scenery)
-    cloudTimer -= dt;
-    if (cloudTimer <= 0) {
-      clouds.push({ x: W + 60, y: GROUND * (0.08 + Math.random() * 0.38),
-                    s: (0.55 + Math.random() * 0.7) * f });
-      cloudTimer = 2.5 + Math.random() * 4;
-    }
-    for (const c of clouds) c.x -= vx * 0.15 * dt;
-    clouds = clouds.filter(c => c.x > -160);
-
     // collision
     const pb = playerHitbox(playerFrame());
     for (const o of obstacles) {
@@ -848,52 +822,158 @@
   }
 
   // ---------- render ----------
+  // The road: a dark edge line, a yellow curb, then asphalt with a dashed lane
+  // line that scrolls with the world (the one moving part of the scenery).
+  const ASPHALT = "rgb(146,142,140)";
+  const CURB    = "rgb(232,190,72)";
+  const LANE_PERIOD = 52, LANE_DASH = 26;
+  // The runner's feet and every obstacle stand at about GROUND, so the asphalt
+  // starts above it: they run on the road, not beside it.
+  const curbY = () => GROUND - 16;
+  const roadTop = () => GROUND - 12;
   function drawGround() {
     ctx.fillStyle = fgColor();
-    ctx.fillRect(0, GROUND + 2, W, 2);
+    ctx.fillRect(0, curbY() - 2, W, 2);
+    ctx.fillStyle = CURB;
+    ctx.fillRect(0, curbY(), W, 4);
+    ctx.fillStyle = ASPHALT;
+    ctx.fillRect(0, roadTop(), W, H - roadTop());
+    // flecks in the asphalt
     const off = worldX % SPECKLE_STRIP;
-    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = "rgb(112,108,108)";
+    ctx.globalAlpha = 0.45;
     for (const s of SPECKLES) {
       let x = s.x - off;
       if (x < -20) x += SPECKLE_STRIP;
       if (x > W + 20) continue;
-      ctx.fillRect(x, GROUND + 5 + s.y, s.w, 2);
+      ctx.fillRect(x, roadTop() + 2 + s.y * 1.3, s.w, 2);
     }
     ctx.globalAlpha = 1;
+    // dashed lane line
+    ctx.fillStyle = "rgb(250,248,242)";
+    const laneY = GROUND + 12;                       // the lane line below Elmio's lane
+    for (let x = -(worldX % LANE_PERIOD); x < W; x += LANE_PERIOD)
+      ctx.fillRect(Math.round(x), laneY, LANE_DASH, 3);
   }
 
-  function drawSky() {
-    // clouds fade out at night, stars fade in
-    if (night < 0.99) {
-      ctx.fillStyle = fgColor();
-      for (const c of clouds) {
-        ctx.globalAlpha = 0.14 * (1 - night);
-        const w = 70 * c.s, h = 16 * c.s;
-        ctx.fillRect(c.x, c.y, w, h);
-        ctx.fillRect(c.x + w * 0.2, c.y - h * 0.5, w * 0.5, h * 0.6);
-      }
-      ctx.globalAlpha = 1;
+  // The far backdrop is one static picture (it does not scroll): a row of small,
+  // cute pastel shops standing on the curb line, built from chunky rectangles
+  // (multiples of SCALE) to match the pixel art. Rooftops vary: flat, gabled,
+  // rounded, and cat-ears.
+  const TRUNK = "rgb(122,92,64)";
+  const WALLS = [                 // pastel: pink, mint, butter, sky, lavender, peach
+    [244, 208, 208], [204, 228, 214], [250, 232, 180],
+    [200, 220, 238], [224, 212, 238], [248, 218, 190],
+  ];
+  const ROOF = "rgb(226,152,124)", DOOR = "rgb(168,128,108)", PANE = "rgb(255,250,238)";
+  const AWN_A = "rgb(240,128,128)", AWN_B = "rgb(255,250,238)";
+  const shade = (c, k) => `rgb(${c.map(v => Math.round(v * k)).join(",")})`;
+  // x and width as a fraction of W, height in art pixels, wall colour, roof style
+  // (0 flat, 1 gable, 2 cat-ears, 3 rounded), awning over the door (0/1)
+  const BUILDINGS = [
+    [0.000, 0.105, 18, 0, 1, 1], [0.110, 0.092, 24, 1, 2, 0], [0.207, 0.110, 16, 2, 0, 1],
+    [0.322, 0.092, 22, 3, 3, 0], [0.419, 0.105, 17, 4, 1, 1], [0.529, 0.092, 25, 5, 2, 1],
+    [0.626, 0.110, 15, 0, 3, 0], [0.741, 0.092, 21, 1, 0, 1], [0.838, 0.105, 19, 2, 1, 0],
+    [0.948, 0.060, 23, 3, 2, 1],
+  ];
+  function drawBuilding(x0, wp, hp, wall, roof, awning) {
+    const S = SCALE, base = curbY() - 2;
+    const x = x0 * S, w = wp * S, h = hp * S, top = base - h;
+    ctx.fillStyle = `rgb(${wall.join(",")})`;
+    if (roof === 3) {                                  // rounded top corners
+      ctx.fillRect(x + 2 * S, top, w - 4 * S, S);
+      ctx.fillRect(x + S, top + S, w - 2 * S, S);
+      ctx.fillRect(x, top + 2 * S, w, h - 2 * S);
+    } else {
+      ctx.fillRect(x, top, w, h);
     }
-    if (night > 0.01) {
-      ctx.fillStyle = fgColor();
-      for (const s of STARS) {
-        ctx.globalAlpha = night * (0.4 + 0.6 * Math.abs(Math.sin(timeNow * 1.5 + s.p)));
-        ctx.fillRect(s.x, s.y, 3, 3);
+    if (roof === 1) {                                  // gabled roof: a stepped trapezoid
+      ctx.fillStyle = ROOF;
+      const step = Math.max(1, Math.min(3, Math.floor(wp / 9)));
+      for (let r = 0; r < 4; r++) {
+        const inset = r * step * S;
+        if (w - 2 * inset <= 2 * S) break;
+        ctx.fillRect(x - S + inset, top - (r + 1) * S, w + 2 * S - 2 * inset, S);
       }
-      // crescent moon
-      // low enough that it never sits behind the score on a narrow screen
-      const mx = W - Math.min(120, W * 0.16), my = GROUND * 0.26, mr = 20 * f + 4;
-      ctx.globalAlpha = night * 0.9;
-      ctx.beginPath();
-      ctx.arc(mx, my, mr, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = bgColor();
-      ctx.beginPath();
-      ctx.arc(mx + mr * 0.45, my - mr * 0.32, mr * 0.86, 0, Math.PI * 2);
-      ctx.fill();
+    } else if (roof === 2) {                           // cat ears on the roof corners
+      ctx.fillStyle = shade(wall, 0.9);
+      for (const ex of [x + S, x + w - 4 * S]) {
+        ctx.fillRect(ex, top - S, 3 * S, S);
+        ctx.fillRect(ex, top - 2 * S, 2 * S, S);
+      }
+      ctx.fillRect(x + S, top - 3 * S, S, S);          // left ear tip
+      ctx.fillRect(x + w - 2 * S, top - 3 * S, S, S);  // right ear tip (mirrored)
+      ctx.fillStyle = "rgb(240,160,160)";              // pink inner ears
+      ctx.fillRect(x + S, top - S, S, S);
+      ctx.fillRect(x + w - 2 * S, top - S, S, S);
+    } else {                                           // flat: a darker roof band
+      ctx.fillStyle = shade(wall, 0.88);
+      ctx.fillRect(x, top, w, S);
     }
-    ctx.globalAlpha = 1;
+    // door in the middle of the ground floor
+    const dw = 4 * S, dx = Math.round((x + (w - dw) / 2) / S) * S;
+    ctx.fillStyle = DOOR;
+    ctx.fillRect(dx, base - 7 * S, dw, 7 * S);
+    ctx.fillStyle = "rgb(250,214,120)";
+    ctx.fillRect(dx + dw - S, base - 4 * S, S, S);     // door knob
+    // striped awning above the door
+    if (awning) {
+      const ay = base - 10 * S;
+      for (let i = 0, ax = x + S; ax + S <= x + w - S; i++, ax += 2 * S) {
+        ctx.fillStyle = i % 2 ? AWN_B : AWN_A;
+        ctx.fillRect(ax, ay, Math.min(2 * S, x + w - S - ax), 2 * S);
+      }
+    }
+    // cream windows on the floors above the door
+    ctx.fillStyle = PANE;
+    const lowest = base - (awning ? 13 : 10) * S;
+    for (let wy = top + 4 * S; wy + 3 * S <= lowest; wy += 6 * S)
+      for (let wx = x + 3 * S; wx + 2 * S <= x + w - 2 * S; wx += 5 * S)
+        ctx.fillRect(wx, wy, 2 * S, 3 * S);
+  }
+  function drawBackdrop() {
+    const S = SCALE;
+    const base = curbY() - 2;                         // where the backdrop meets the road
+    for (const [fx, fw, hp, ci, roof, awning] of BUILDINGS)
+      drawBuilding(Math.round(W * fx / S), Math.max(8, Math.round(W * fw / S)), hp, WALLS[ci], roof, awning);
+    drawRoadsideSigns(base);
+  }
+
+  // Roadside signs ARE part of the road: they scroll past at the road's speed.
+  // The "CAR FREE DAY" sign stands near the start and scrolls away; a distance
+  // sign passes the cat at 250 m, 500 m, 750 m, 1 km, 1.25 km ... (one point = 1 m).
+  function signText(m) {
+    if (m < 1000) return m + " m";
+    const km = m / 1000;
+    return (Number.isInteger(km) ? km : km.toFixed(2).replace(/0$/, "")) + " km";
+  }
+  function drawSign(cx, base, text, wArt) {
+    const S = SCALE, sw = wArt * S, sh = 8 * S, post = 18 * S;
+    if (cx + sw / 2 < -10 || cx - sw / 2 > W + 10) return;
+    const sx = Math.round((cx - sw / 2) / S) * S, sy = base - post;
+    ctx.fillStyle = TRUNK;
+    ctx.fillRect(sx + 4 * S, sy + sh, S, post - sh);
+    ctx.fillRect(sx + sw - 5 * S, sy + sh, S, post - sh);
+    ctx.fillStyle = fgColor();
+    ctx.fillRect(sx - S, sy - S, sw + 2 * S, sh + 2 * S);
+    ctx.fillStyle = "rgb(255,250,238)";
+    ctx.fillRect(sx, sy, sw, sh);
+    ctx.fillStyle = fgColor();
+    ctx.textAlign = "center";
+    uiFont(11, "bold");
+    ctx.fillText(text, sx + sw / 2, sy + sh * 0.68);
+    ctx.textAlign = "left";
+  }
+  function drawRoadsideSigns(base) {
+    const perPoint = PTS_TO_UNITS * f;                // world units of road per point
+    const catX = PLAYERX + 22;                        // the sign is "at" the cat when its centre is here
+    drawSign(W * 0.72 - score * perPoint, base, "CAR FREE DAY", 40);
+    // distance signs: only a few can be on screen, so test a short run of them
+    const first = Math.max(1, Math.floor(score / 250));
+    for (let k = first; k < first + 3; k++) {
+      const m = k * 250;
+      drawSign(catX + (m - score) * perPoint, base, signText(m), 20);
+    }
   }
 
   // UI text is sized in CSS pixels (via U) so it stays legible on a phone
@@ -949,7 +1029,7 @@
     ctx.fillStyle = bgColor();
     ctx.fillRect(0, 0, W, H);
 
-    drawSky();
+    drawBackdrop();
     drawGround();
 
     if (!assetsReady) {
@@ -1027,7 +1107,7 @@
   layout();
   requestAnimationFrame(loop);
 
-  // dev hook: e.g. `elmio.score = 495` in the console to preview night mode
+  // dev hook: e.g. `elmio.score = 500` in the console to jump ahead to a distance sign (signs at 250, 500, 750 ...)
   window.elmio = {
     get score()  { return score; },
     set score(v) { score = v; },
