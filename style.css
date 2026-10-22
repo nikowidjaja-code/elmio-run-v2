@@ -101,6 +101,22 @@ canvas {
 #fullscreen:not([hidden]) + #mute { left: 48px; }
 #mute.off { opacity: 0.35; text-decoration: line-through; }
 
+/* the share-card button sits under the game-over text; game.js sets its top */
+#card {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  background: rgba(223, 214, 197, 0.85);
+  color: var(--ink);
+  font: bold 13px/1 "Courier New", monospace;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+#card[hidden] { display: none; }
+
 .hint {
   flex: 0 0 auto;
   font-size: clamp(11px, 2.6vw, 13px);

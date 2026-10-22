@@ -38,6 +38,8 @@ moment and fires on touchdown.
 
 - **Distance is the score:** one point is one metre. A roadside sign passes at
   250 m, 500 m, 750 m, 1 km and so on, and a "CAR FREE DAY" sign stands near the start.
+  As each one passes, a short line fades in and out of the sky ("Elmio ran 250 m",
+  "Nice pace", "Zoomies unlocked" ...) and the other cats hop one after another.
 - **The light changes every 1000 m:** morning peach, dusk, night with a moon and
   stars, then dawn. Windows and lamps light up at night.
 - **Scenery:** pastel shops of different heights, with street trees and lamp
@@ -68,6 +70,13 @@ Pairs, triples and barrels only appear once the road is fast enough that a
 tapped jump has a comfortable window, and the short waits between groups ramp
 in over the first 400 m. The wait between groups is scheduled in arrival time,
 not distance, so the pause you feel stays the same however wide the group is.
+
+### Share card
+
+The game-over screen has a "Save card" button. It makes a 1080 x 1080 picture of
+the run (Elmio's face, "Elmio ran 1.2 km", the best distance, on the sky colour from
+where the run stopped) only when pressed. Phones open their share sheet; a desktop
+downloads `elmio-run.png`.
 
 ### Screens
 

@@ -85,6 +85,15 @@ Score is distance: one point is one metre. A roadside sign every 250 m (labelled
 A "Car Free Day" line on the title screen is skipped for now. The best score is still saved on the
 device. A daily streak is a possible later step, not part of the first pass.
 
+At each 250 m sign a short line shows in the sky for about 2 s (the first sign and every 1 km sign
+say the distance, the rest rotate through five short lines) and the other cats hop one after another.
+Night stays the same difficulty: obstacles keep their full colour and were measured and looked at
+against the night road, and need no outline.
+
+**Share card:** a "Save card" button on the game-over screen makes a 1080 x 1080 PNG on request:
+Elmio's face, "Elmio ran X", the best distance (or "New best"), the sky colour from where the run
+stopped, and the footer "Car Free Day, cats only". Nothing personal, no dates, no names.
+
 ## Palette direction (not final)
 
 Keep the cream page. Road: mid grey. Hedge: flat green. Cones: orange. Elmio: golden orange with

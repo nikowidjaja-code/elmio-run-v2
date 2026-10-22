@@ -486,6 +486,10 @@
   let spawnLog = [];    // recent {name, gap} spawns, for tuning (see elmio.spawns)
   let flashT = 0;             // score milestone flash
   let lastMilestone = 0;
+  let lastSign = 0;           // the last 250 m sign the cat has passed
+  let banner = null;          // {text, t}: the line shown in the sky for a moment at each sign
+  let bannerN = 0;            // how many of the rotating lines have been used this run
+  let lastRun = null;         // {m, newBest} from the run that just ended, for the share card
   let lastC = 0, stepT = 0, stepK = 0;   // for the dusk/dawn sweeps and the footsteps
   let overAt = 0;             // timestamp of death, for restart lockout
   let timeNow = 0;
@@ -522,6 +526,7 @@
         ph: Math.random() * 6.28,
         rel: (i % 2 ? -1 : 1) * (0.07 + Math.random() * 0.16) * (i < 2 ? 1 : -1),
         x: null, yB: 0,
+        hopAt: -1e9,                                      // timeNow at which this cat hops for a sign
       }))
       .sort((a, b) => a.lane - b.lane);                   // upper lane first, so the lower lane overlaps it
   })();
@@ -545,8 +550,12 @@
 
   function drawRacers() {
     const anim = player.state === "run" ? "run" : "sitIdle";
-    for (const r of racers)
-      drawFrame(r.sheet, animFrame(anim, timeNow + r.ph), r.x, r.yB, false, r.scale);
+    for (const r of racers) {
+      const h = (timeNow - r.hopAt) / HOP_T;
+      const up = h > 0 && h < 1;
+      drawFrame(r.sheet, up ? F.stretch : animFrame(anim, timeNow + r.ph),
+        r.x, r.yB - (up ? Math.sin(h * Math.PI) * 14 : 0), false, r.scale);
+    }
   }
 
   // ---------- layout ----------
@@ -605,6 +614,8 @@
     score = 0;
     worldX = 0;
     lastMilestone = 0;
+    lastSign = 0; banner = null; bannerN = 0;
+    for (const r of racers) r.hopAt = -1e9;
     lastC = 0; stepT = 0;
     flashT = 0;
     jumpBuffer = 0;
@@ -902,6 +913,7 @@
     player.ducking = false;
     jumpBuffer = 0;
     overAt = performance.now();
+    lastRun = { m: Math.floor(score), newBest: hi > 0 && score > hi };   // a first-ever run is not announced as a best
     if (score > hi) {
       hi = Math.floor(score);
       localStorage.setItem(HI_KEY, hi);
@@ -963,6 +975,15 @@
       sfx.chime(ms % 5 === 0);   // a third note every 500 m
     }
     if (flashT > 0) flashT -= dt;
+
+    // a distance sign passes the cat: a line in the sky, and the other cats hop one after another
+    const sg = Math.floor(score / SIGN_M);
+    if (sg > 0 && sg !== lastSign) {
+      lastSign = sg;
+      banner = { text: bannerLine(sg), t: 0 };
+      racers.forEach((r, i) => { r.hopAt = timeNow + i * 0.1; });
+    }
+    if (banner) { banner.t += dt; if (banner.t > BANNER_T) banner = null; }
 
     // obstacles
     nextSpawn -= speed * dt;
@@ -1238,6 +1259,33 @@
     forFront((x, kind) => drawFrontItem(x, kind, true));
   }
 
+  // The line in the sky when a sign passes. The first sign and every 1 km sign say the distance;
+  // the ones between rotate through a few short lines (no people, no claims).
+  const SIGN_M = 250, HOP_T = 0.45, BANNER_T = 2.2;
+  const BANNER_LINES = ["Nice pace", "Zoomies unlocked", "The road is all ours", "Good kitty", "Still going"];
+  function bannerLine(k) {
+    if (k === 1 || k % 4 === 0) return "Elmio ran " + signText(k * SIGN_M);
+    return BANNER_LINES[bannerN++ % BANNER_LINES.length];
+  }
+  function drawBanner() {
+    if (!banner) return;
+    const a = Math.min(1, banner.t / 0.25, (BANNER_T - banner.t) / 0.5);
+    ctx.globalAlpha = clamp01(a);
+    ctx.fillStyle = skyInk();
+    ctx.strokeStyle = bgColor();
+    ctx.lineJoin = "round";
+    ctx.lineWidth = 5 * U;
+    ctx.textAlign = "center";
+    uiFont(15, "bold");
+    const tw = ctx.measureText(banner.text).width;
+    if (tw > W * 0.8) uiFont(15 * W * 0.8 / tw, "bold");
+    const y = 66 * U - (1 - clamp01(banner.t / 0.25)) * 6 * U;      // it settles in from slightly higher
+    ctx.strokeText(banner.text, W / 2, y);
+    ctx.fillText(banner.text, W / 2, y);
+    ctx.textAlign = "left";
+    ctx.globalAlpha = 1;
+  }
+
   // Roadside signs ARE part of the road: they scroll past at the road's speed.
   // The "CAR FREE DAY" sign stands near the start and scrolls away; a distance
   // sign passes the cat at 250 m, 500 m, 750 m, 1 km, 1.25 km ... (one point = 1 m).
@@ -1421,6 +1469,7 @@
     drawFrame("orange", playerFrame(), PLAYERX, player.y, false);
 
     drawHUD();
+    if (player.state === "run") drawBanner();
     drawControlHints();
 
     if (player.state === "title") {
@@ -1430,6 +1479,75 @@
       drawCenterText("G A M E   O V E R",
         touchMode ? "tap to try again" : "press SPACE to try again");
     }
+  }
+
+  // ---------- share card ----------
+  // A 1080x1080 picture of the run that just ended, made only when the button is pressed: Elmio's
+  // face, the distance, the best distance, on the sky colour from where the run stopped.
+  const cardBtn = document.getElementById("card");
+  function fmtDist(m) {
+    if (m < 1000) return m + " m";
+    return (m / 1000).toFixed(2).replace(/\.?0+$/, "") + " km";
+  }
+  function makeCard() {
+    const S = 1080, cv = document.createElement("canvas");
+    cv.width = cv.height = S;
+    const g = cv.getContext("2d");
+    const keep = cyc;
+    cyc = cycleAt(lastRun.m);                       // skyInk() and bgColor() read the current light
+    g.fillStyle = bgColor();
+    g.fillRect(0, 0, S, S);
+    g.imageSmoothingEnabled = false;
+    g.drawImage(img.orange, 14, 7, 12, 12, S / 2 - 240, 130, 480, 480);   // the face, as in the app icon
+    g.fillStyle = skyInk();
+    g.textAlign = "center";
+    const fit = (text, px, weight) => {
+      g.font = `${weight} ${px}px 'Courier New', monospace`;
+      const w = g.measureText(text).width;
+      if (w > S * 0.88) g.font = `${weight} ${px * S * 0.88 / w}px 'Courier New', monospace`;
+    };
+    fit("Elmio ran " + fmtDist(lastRun.m), 84, "bold");
+    g.fillText("Elmio ran " + fmtDist(lastRun.m), S / 2, 740);
+    g.globalAlpha = 0.75;
+    const best = lastRun.newBest ? "New best" : "Best " + fmtDist(hi);
+    fit(best, 48, "");
+    g.fillText(best, S / 2, 830);
+    g.globalAlpha = 0.55;
+    fit("Car Free Day, cats only", 36, "");
+    g.fillText("Car Free Day, cats only", S / 2, 990);
+    g.globalAlpha = 1;
+    cyc = keep;
+    return new Promise(res => cv.toBlob(res, "image/png"));
+  }
+  let cardBusy = false;
+  async function saveCard() {
+    if (cardBusy || !lastRun) return;
+    cardBusy = true;
+    let done = false;
+    try {
+      const blob = await makeCard();
+      const file = new File([blob], "elmio-run.png", { type: "image/png" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: "Elmio Run" });   // the phone's share sheet
+      } else {
+        const a = document.createElement("a");                          // desktop: a download
+        a.href = URL.createObjectURL(blob);
+        a.download = "elmio-run.png";
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      }
+      done = true;
+    } catch (_) { /* the share sheet was closed, or saving is not possible here */ }
+    if (done && cardBtn) { cardBtn.textContent = "Saved"; setTimeout(() => { cardBtn.textContent = "Save card"; }, 1500); }
+    cardBusy = false;
+  }
+  if (cardBtn) cardBtn.addEventListener("click", () => { saveCard(); cardBtn.blur(); });
+  // shown on the game-over screen, just under its text
+  function placeCardBtn() {
+    if (!cardBtn) return;
+    const show = player.state === "over" && !!lastRun;
+    if (cardBtn.hidden === show) cardBtn.hidden = !show;
+    if (show) cardBtn.style.top = Math.round(Math.min(H * 0.34, GROUND - 150) / U + 40) + "px";
   }
 
   // ---------- viewport plumbing ----------
@@ -1479,6 +1597,7 @@
     lastT = t;
     update(dt);
     render();
+    placeCardBtn();
     requestAnimationFrame(loop);
   }
   document.addEventListener("visibilitychange", () => { lastT = null; });
@@ -1502,6 +1621,7 @@
     relayout()   { layout(); },
     reset(quiet) { reset(); if (quiet) nextSpawn = 1e9; },   // a clean run with no restart cooldown; quiet = no natural spawns (for the simulations)
     // run the other cats' drift for n steps and report where each one went (for checking the edge wrap)
+    makeCard,                       // resolves to the share card's PNG blob
     racerSim(dt, vx, n) {
       const lo = racers.map(r => r.x), hi = lo.slice(); let wraps = 0;
       for (let i = 0; i < n; i++) {
