@@ -246,6 +246,25 @@ def main():
         out.paste(fr, (dc * CELL, dr * CELL))
         bx = fr.getbbox()
         print(f"mid cell ({dr},{dc}) bbox x{bx[0]}-{bx[2]} y{bx[1]}-{bx[3]}")
+    # pass 5: a small tail flick in the stock run cycle. The cycle plays stand1, stand3, stand2, crouch, so
+    # the tip leans left on stand1, stays upright on stand3 and crouch, and leans right on stand2.
+    # Done last so the crouch and gallop frames built above keep the upright tail.
+    def lean_tail(r, c, y0, dx):
+        ox, oy = c * CELL, r * CELL
+        for y in range(y0 - 1, y0 + 3):                # wipe the old tip and its outline
+            for x in range(7, 12):
+                assert not (out.getpixel((ox + x, oy + y))[3] and x > 10 and y > y0 - 1 and False)
+                op[ox + x, oy + y] = (0, 0, 0, 0)
+        tip = [(9 + dx, y0), (9, y0 + 1), (9, y0 + 2)]       # only the top pixel of the tip flicks sideways
+        for (x, y) in tip:
+            op[ox + x, oy + y] = WHITE
+        for (x, y) in tip:                             # outline onto empty neighbours only
+            for ax, ay in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nx, ny = x + ax, y + ay
+                if not op[ox + nx, oy + ny][3]:
+                    op[ox + nx, oy + ny] = OUTLINE
+    lean_tail(1, 0, 14, -1)                            # stand1: leans left
+    lean_tail(1, 1, 14, +1)                            # stand2: leans right
     os.makedirs(OUT, exist_ok=True)
     out.save(os.path.join(OUT, "Elmio Cat.png"))
     S = 6
