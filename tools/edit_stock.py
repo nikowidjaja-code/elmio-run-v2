@@ -1,6 +1,8 @@
 """Edit the stock Orange Cat sheet into Elmio: same 32x32 grid, same frames.
 
 Pass 1: recolour to his golden coat (guideline photos) and paint white socks.
+Pass 3: two real crouch frames for ducking (cells (2,1) and (2,2)), built from the
+        finished stand1/stand2 frames: head lowered onto the body, legs unchanged.
 Pass 2: cream tail tip (per-frame coordinates) and a white chest bib (the
         "collar" band under the chin).
 Writes sprites/elmio_edit/Elmio Cat.png; assets/ is never touched.
@@ -28,25 +30,25 @@ CELL = 32
 # Tail tip pixels per cell (row, col) -> cell-local (x, y), read off the sheet
 # frame by frame. The tail ends somewhere different in every pose.
 TAIL_TIP = {
-    (1, 0): [(9, 14), (9, 15)],   # stand1
-    (1, 1): [(9, 14), (9, 15)],   # stand2
-    (0, 0): [(9, 16), (9, 17)],   # stand3
-    (0, 1): [(9, 15), (9, 16)],   # crouch
-    (0, 2): [(9, 13), (9, 14)],   # stretch
-    (0, 3): [(9, 12), (9, 13)],   # tuck
-    (2, 0): [(9, 15), (9, 16)],   # stand4
-    (3, 0): [(8, 18), (8, 19)],   # sit1
-    (3, 1): [(7, 20), (8, 21)],   # sit2
-    (3, 2): [(6, 22), (7, 21)],   # sit3
-    (3, 3): [(8, 24), (8, 25)],   # sit4
-    (4, 0): [(10, 25), (11, 26)], # lay1
-    (4, 1): [(10, 25), (11, 26)], # lay2
-    (5, 1): [(12, 25), (13, 25)], # lay3
-    (5, 3): [(9, 26), (10, 25)],  # lay4
-    (6, 0): [(13, 24), (14, 24)], # curl
-    (7, 0): [(13, 24), (14, 24)], # sleep1
-    (7, 1): [(11, 25), (12, 25)], # sleep2
-    (7, 2): [(10, 25), (11, 26)], # sleep3
+    (1, 0): [(9, 14), (9, 15), (9, 16)],   # stand1
+    (1, 1): [(9, 14), (9, 15), (9, 16)],   # stand2
+    (0, 0): [(9, 16), (9, 17), (9, 18)],   # stand3
+    (0, 1): [(9, 15), (9, 16), (9, 17)],   # crouch
+    (0, 2): [(9, 13), (9, 14), (9, 15)],   # stretch
+    (0, 3): [(9, 12), (9, 13), (9, 14)],   # tuck
+    (2, 0): [(9, 15), (9, 16), (9, 17)],   # stand4
+    (3, 0): [(8, 18), (8, 19), (8, 20)],   # sit1
+    (3, 1): [(7, 20), (8, 21), (9, 21)],   # sit2
+    (3, 2): [(6, 22), (7, 21), (8, 21)],   # sit3
+    (3, 3): [(8, 24), (8, 25), (8, 23)],   # sit4
+    (4, 0): [(10, 25), (11, 26), (10, 24)], # lay1
+    (4, 1): [(10, 25), (11, 26), (10, 24)], # lay2
+    (5, 1): [(12, 25), (13, 25), (11, 25)], # lay3
+    (5, 3): [(9, 26), (10, 25), (10, 24)],  # lay4
+    (6, 0): [(13, 24), (14, 24), (12, 24)], # curl
+    (7, 0): [(13, 24), (14, 24), (12, 24)], # sleep1
+    (7, 1): [(11, 25), (12, 25), (11, 24)], # sleep2
+    (7, 2): [(10, 25), (11, 26), (10, 24)], # sleep3
 }
 
 def main():
@@ -83,7 +85,25 @@ def main():
                     if all(sp[x0 + i, y] == STRIPE for i in range(4)) and y + 1 < cy + CELL                             and all(sp[x0 + i, y + 1] == SHADE for i in range(4)):
                         for i in range(4):
                             op[x0 + i, y] = WHITE
-                            op[x0 + i, y + 1] = WHITE
+                            if i in (1, 2):                      # V shape: outer pixels stay shade
+                                op[x0 + i, y + 1] = WHITE
+    # pass 3: crouch frames. The head (everything right of HEAD_X and above its
+    # chin row) drops DROP rows onto the body; the body, legs and tail stay put.
+    HEAD_X, DROP = 14, 4
+    for (r, c), (dr, dc), chin in (((1, 0), (2, 1), 17), ((1, 1), (2, 2), 18)):
+        cell = out.crop((c * CELL, r * CELL, c * CELL + CELL, r * CELL + CELL))
+        body, head = cell.copy(), Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+        bp, hp = body.load(), head.load()
+        for y in range(chin + 1):
+            for x in range(HEAD_X, CELL):
+                hp[x, y] = bp[x, y]
+                bp[x, y] = (0, 0, 0, 0)
+        moved = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+        moved.paste(head, (0, DROP))
+        body.alpha_composite(moved)
+        out.paste(body, (dc * CELL, dr * CELL))
+        box = body.getbbox()
+        print(f"duck cell ({dr},{dc}) bbox x{box[0]}-{box[2]} y{box[1]}-{box[3]}")
     os.makedirs(OUT, exist_ok=True)
     out.save(os.path.join(OUT, "Elmio Cat.png"))
     S = 6

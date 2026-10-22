@@ -78,6 +78,8 @@
     ["stretch",  0, 2, [8, 6, 26, 22]],   // airborne stretch
     ["tuck",     0, 3, [8, 7, 26, 24]],   // airborne tuck / landing
     ["stand4",   2, 0, [8, 8, 26, 25]],   // sit-down transition stand
+    ["duck1",    2, 1, [8, 12, 26, 25]],  // crouch run A (head dropped onto the body)
+    ["duck2",    2, 2, [8, 13, 26, 25]],  // crouch run B
     ["sit1",     3, 0, [7, 8, 26, 25]],
     ["sit2",     3, 1, [6, 8, 26, 25]],
     ["sit3",     3, 2, [5, 8, 26, 25]],
@@ -98,7 +100,7 @@
   // "Cat Sprites Animation Sequence" reference sheet.
   const ANIM = {
     run:      { frames: ["stand1", "stand3", "stand2", "crouch"], fps: 10 },
-    duck:     { frames: ["lay3", "lay2", "lay4", "lay2"],         fps: 8  },
+    duck:     { frames: ["duck1", "duck1", "duck2", "duck2"],     fps: 8  },
     sitIdle:  { frames: ["sit2", "sit3", "sit4", "sit3"],         fps: 3.5},
     standUp:  { frames: ["sit2", "sit1", "stand4", "stand1"],     fps: 12 },
     toSleep:  { frames: ["lay3", "curl", "sleep1"],               fps: 5  },
@@ -278,25 +280,6 @@
       ctx.drawImage(im, f.sx, f.sy, CELL, CELL, 0, 0, CELL * s, CELL * s);
       ctx.restore();
     }
-  }
-
-  // Duck pose: the laying frames keep the cat's head raised, so drawn as-is
-  // they are as tall as the run pose. Slice at the neck (all three duck
-  // frames share identical head/body pixels): head stays 1:1, only the
-  // body is squashed flat. The sheet has no true crouch-run frame.
-  const DUCK_NECK = 18;      // cell row where the raised head meets the body
-  const DUCK_BODY_SQ = 0.55; // vertical squash applied to the body slice
-  function drawDuck(f, x, yBottom) {
-    const im = img.orange;
-    if (!im) return;
-    const S = SCALE;
-    const bodyRows = f.bb[3] - DUCK_NECK;
-    const headRows = DUCK_NECK - f.bb[1];
-    const bodyH = bodyRows * S * DUCK_BODY_SQ;
-    ctx.drawImage(im, f.sx, f.sy + DUCK_NECK, CELL, bodyRows,
-      x - f.bb[0] * S, yBottom - bodyH, CELL * S, bodyH);
-    ctx.drawImage(im, f.sx, f.sy + f.bb[1], CELL, headRows,
-      x - f.bb[0] * S, yBottom - bodyH - headRows * S, CELL * S, headRows * S);
   }
 
   // Tight content box in world coords (same for flipped sprites).
@@ -654,8 +637,9 @@
 
   function playerHitbox(f) {
     const b = frameBox(f, PLAYERX, player.y);
-    // Ducking: ignore the raised head/ears — body-only box (dino-style mercy).
-    if (player.grounded && player.ducking) return inset(b, 5, 21);
+    // Ducking: the crouch frames are shorter than a run frame; keep the box a
+    // fixed 26 units tall (dino-style mercy: the ears can graze a flier).
+    if (player.grounded && player.ducking) return inset(b, 5, Math.max(0, b.h - 36));
     return inset(b, 5);
   }
 
@@ -954,10 +938,7 @@
       ctx.drawImage(spr.cv, o.x, yB - spr.h * SCALE, spr.w * SCALE, spr.h * SCALE);
     }
 
-    // player (ducking flattens the body but keeps the head at full size)
-    const ducked = player.state === "run" && player.grounded && player.ducking;
-    if (ducked) drawDuck(playerFrame(), PLAYERX, player.y);
-    else drawFrame("orange", playerFrame(), PLAYERX, player.y, false);
+    drawFrame("orange", playerFrame(), PLAYERX, player.y, false);
 
     drawHUD();
 
