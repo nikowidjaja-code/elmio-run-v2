@@ -65,7 +65,8 @@
   const HI_KEY  = "elmio-run.hi";
 
   // ---------- sprite sheet metadata ----------
-  // Every sheet is a 128x256 PNG on a 4x8 grid of 32x32 cells.
+  // Every sheet is a 128x256 PNG on a 4x8 grid of 32x32 cells (the Elmio sheet
+  // has two more rows below, 128x320, for the gallop in-between frames).
   // bb = tight content box [x0,y0,x1,y1] (exclusive right/bottom),
   // measured from the sheets; identical across all cat colors.
   const CELL = 32;
@@ -80,6 +81,21 @@
     ["stand4",   2, 0, [8, 8, 26, 25]],   // sit-down transition stand
     ["duck1",    2, 1, [8, 12, 26, 25]],  // crouch run A (head dropped onto the body)
     ["duck2",    2, 2, [8, 13, 26, 25]],  // crouch run B
+    // gallop: the air frames (1, 5, 6) are drawn lifted off the ground; bb[1] is
+    // the hitbox top only, so it stays at the old run cycle's 8/9 and the lift is forgiving.
+    ["gallop1",  2, 3, [8, 8, 26, 25]],   // stretched out in the air
+    ["gallop2",  4, 2, [8, 8, 26, 25]],   // front paws land
+    ["gallop3",  4, 3, [8, 9, 26, 25]],   // legs under the body
+    ["gallop4",  6, 1, [8, 8, 26, 25]],   // push off
+    ["gallop5",  6, 2, [8, 8, 26, 25]],   // tucked at the top of the leap
+    ["gallop6",  6, 3, [8, 8, 26, 25]],   // reaching forward
+    // in-between poses, in two extra rows at the bottom of the Elmio sheet only
+    ["gallop1b", 8, 0, [8, 8, 26, 25]],   // coming down out of the stretch
+    ["gallop2b", 8, 1, [8, 8, 26, 25]],   // settling after the landing
+    ["gallop3b", 8, 2, [8, 8, 26, 25]],   // hind starting to sweep back
+    ["gallop4b", 8, 3, [8, 8, 26, 25]],   // leaving the ground
+    ["gallop5b", 9, 0, [8, 8, 26, 25]],   // top of the leap, front starting to reach
+    ["gallop6b", 9, 1, [8, 8, 26, 25]],   // hind stretching back
     ["sit1",     3, 0, [7, 8, 26, 25]],
     ["sit2",     3, 1, [6, 8, 26, 25]],
     ["sit3",     3, 2, [5, 8, 26, 25]],
@@ -99,6 +115,7 @@
   // Animation sequences reconstructed from the labelled
   // "Cat Sprites Animation Sequence" reference sheet.
   const ANIM = {
+    // the original stock run cycle; the gallop frames below are kept in the sheet but unused
     run:      { frames: ["stand1", "stand3", "stand2", "crouch"], fps: 10 },
     duck:     { frames: ["duck1", "duck1", "duck2", "duck2"],     fps: 8  },
     sitIdle:  { frames: ["sit2", "sit3", "sit4", "sit3"],         fps: 3.5},
