@@ -62,9 +62,9 @@
   // of overlap at the speed they unlock). -600 -> apex 95 units and 0.62s of
   // air, vs 115 units / 0.68s for a jump that is held down.
   const JUMP_CUT= -600;
-  const SPEED0  = 340;        // starting scroll speed, reference units/s
-  const SPEEDMAX= 820;
-  const SPEEDUP = 10.4;       // reference units/s gained per second
+  const SPEED0  = 250;        // starting scroll speed, reference units/s
+  const SPEEDMAX= 700;
+  const SPEEDUP = 5;          // reference units/s gained per second
   const JUMP_BUFFER = 0.12;   // s of "I pressed just before landing" grace
   const PTS_TO_UNITS = 40;    // world units of road per point (score += speed * 0.025 per second)
   const HI_KEY  = "elmio-run.hi";
@@ -618,24 +618,24 @@
   const PATTERNS = [
     // --- on the ground: jump over ---
     { name: "fish",      w: 9, make: row(SPR.fish, 1, 0) },
-    { name: "fish2",     w: 7, make: row(SPR.fish, 2, 6) },
+    { name: "fish2",     w: 7, minSpeed: 400, make: row(SPR.fish, 2, 6) },
     // three only once the scroll is fast enough for a tapped (cut-short) jump
     // to still clear the whole school
     { name: "fish3",     w: 4, minSpeed: 480, make: row(SPR.fish, 3, 6) },
     { name: "cone",      w: 6, make: row(SPR.cone, 1, 0) },
-    { name: "cone2",     w: 4, make: row(SPR.cone, 2, 8) },
-    { name: "barrel",    w: 6, make: row(SPR.barrel, 1, 0) },
+    { name: "cone2",     w: 4, minSpeed: 400, make: row(SPR.cone, 2, 8) },
+    { name: "barrel",    w: 6, from: 40, make: row(SPR.barrel, 1, 0) },
     { name: "hydrant",   w: 5, make: row(SPR.hydrant, 1, 0) },
     { name: "puddle",    w: 5, make: row(SPR.puddle, 1, 0) },
     { name: "bone",      w: 3, make: row(SPR.fishbone, 1, 0) },
     // --- airborne ---
-    { name: "flyLow",    w: 10, air: 1, from: 50,  make: flock(FLY_LOW, 1, SPR.ball) },
-    { name: "flyMid",    w: 18, air: 1, from: 50,  duck: 1, make: flock(FLY_MID, 1, SPR.pigeon) },
-    { name: "flyBone",   w: 10, air: 1, from: 90,  duck: 1, make: flock(FLY_MID, 1, SPR.fishbone) },
-    { name: "flyMid2",   w: 14, air: 1, from: 160, duck: 1, make: flock(FLY_MID, 2, SPR.pigeon) },
-    { name: "flyMid3",   w: 10, air: 1, from: 320, duck: 1, make: flock(FLY_MID, 3, SPR.pigeon) },
-    { name: "flyBone2",  w: 8, air: 1, from: 420, duck: 1, make: flock(FLY_MID, 2, SPR.fishbone) },
-    { name: "flyHigh",   w: 8, air: 1, from: 110, make: flock(FLY_HIGH, 1, SPR.butterfly) },
+    { name: "flyLow",    w: 9, air: 1, from: 50,  make: flock(FLY_LOW, 1, SPR.ball) },
+    { name: "flyMid",    w: 10, air: 1, from: 50,  duck: 1, make: flock(FLY_MID, 1, SPR.pigeon) },
+    { name: "flyBone",   w: 6, air: 1, from: 90,  duck: 1, make: flock(FLY_MID, 1, SPR.fishbone) },
+    { name: "flyMid2",   w: 8, air: 1, from: 160, duck: 1, make: flock(FLY_MID, 2, SPR.pigeon) },
+    { name: "flyMid3",   w: 5, air: 1, from: 320, duck: 1, make: flock(FLY_MID, 3, SPR.pigeon) },
+    { name: "flyBone2",  w: 4, air: 1, from: 420, duck: 1, make: flock(FLY_MID, 2, SPR.fishbone) },
+    { name: "flyHigh",   w: 4, air: 1, from: 110, make: flock(FLY_HIGH, 1, SPR.butterfly) },
   ];
 
   function pickPattern() {
@@ -656,10 +656,14 @@
   // arriving, in seconds. Three buckets rather than one flat range, so the
   // rhythm keeps shifting: back-to-back, cruising, then room to breathe.
   const MIN_WAIT = 0.18;         // s, keeps two groups from spawning on top of each other
+  // A tapped jump hangs for 0.62 s and the safe window to start one is only 0.15-0.3 s at the
+  // opening speed (it widens to 0.4+ s at top speed), so back-to-back groups and the shorter
+  // waits ramp in over the first 400 m instead of being there from the start.
   function gapSeconds() {
+    const ramp = clamp01(score / 400);
     const r = Math.random();
-    if (r < 0.30) return 0.70 + Math.random() * 0.25;
-    if (r < 0.82) return 1.05 + Math.random() * 0.60;
+    if (r < 0.30 * ramp) return 0.70 + Math.random() * 0.25;
+    if (r < 0.82) return mix(1.25, 1.05, ramp) + Math.random() * 0.60;
     return 1.90 + Math.random() * 1.00;
   }
 
@@ -1432,11 +1436,13 @@
     set worldX(v) { worldX = v; },
     get state()  { return player.state; },
     get speed()  { return speed; },
+    set speed(v) { speed = v; },
     get ducking(){ return player.ducking; },
     get world()  { return { W, H, GROUND, f, U, ppu, css: [stage.clientWidth, stage.clientHeight] }; },
     duck(on)     { on ? (player.ducking || (player.duckT = 0)) : (player.ducking && (player.duckOutT = 0)); player.ducking = !!on; },
     jump()       { jumpAction(); },
     relayout()   { layout(); },
+    reset(quiet) { reset(); if (quiet) nextSpawn = 1e9; },   // a clean run with no restart cooldown; quiet = no natural spawns (for the simulations)
     // run the other cats' drift for n steps and report where each one went (for checking the edge wrap)
     racerSim(dt, vx, n) {
       const lo = racers.map(r => r.x), hi = lo.slice(); let wraps = 0;
