@@ -120,7 +120,7 @@
 
   // ---------- assets ----------
   const SHEETS = {
-    orange:     "assets/Orange Cat.png",
+    orange:     "assets/Elmio Cat.png",
     black:      "assets/Black Cat.png",
     grey:       "assets/Grey Cat.png",
     white:      "assets/White Cat.png",
