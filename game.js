@@ -1022,6 +1022,8 @@
     ctx.fillStyle = fgColor();
     ctx.textAlign = "center";
     uiFont(11, "bold");
+    const tw = ctx.measureText(text).width;       // the text is sized in screen pixels, the board in
+    if (tw > sw * 0.88) uiFont(11 * sw * 0.88 / tw, "bold");   // units: shrink it to fit on small screens
     ctx.fillText(text, sx + sw / 2, sy + sh * 0.68);
     ctx.textAlign = "left";
   }
@@ -1065,7 +1067,7 @@
     ctx.fillStyle = fgColor();
     ctx.textAlign = "center";
     const maxW = W * 0.9;
-    const y = Math.round(H * 0.34);
+    const y = Math.round(Math.min(H * 0.34, GROUND - 130));   // keep the title above the rooftops
 
     uiFont(23, "bold");
     let tw = ctx.measureText(title).width;
@@ -1179,6 +1181,16 @@
     duck(on)     { on ? (player.ducking || (player.duckT = 0)) : (player.ducking && (player.duckOutT = 0)); player.ducking = !!on; },
     jump()       { jumpAction(); },
     relayout()   { layout(); },
+    // run the other cats' drift for n steps and report where each one went (for checking the edge wrap)
+    racerSim(dt, vx, n) {
+      const lo = racers.map(r => r.x), hi = lo.slice(); let wraps = 0;
+      for (let i = 0; i < n; i++) {
+        const before = racers.map(r => r.x);
+        moveRacers(dt, vx);
+        racers.forEach((r, k) => { if (Math.abs(r.x - before[k]) > W * 0.5) wraps++; lo[k] = Math.min(lo[k], r.x); hi[k] = Math.max(hi[k], r.x); });
+      }
+      return { W: Math.round(W), wraps, racers: racers.map((r, k) => ({ rel: +r.rel.toFixed(2), lane: r.lane, x: Math.round(r.x), min: Math.round(lo[k]), max: Math.round(hi[k]) })) };
+    },
     spawn(name, x) { const p = PATTERNS.find(q => q.name === name); if (p) p.make(x); },   // place a pattern at x (for previews)
     tick(dt = 1 / 60, n = 1) { for (let i = 0; i < n; i++) update(dt); render(); },
     get spawns() { return spawnLog.slice(); },
