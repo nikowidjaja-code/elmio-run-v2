@@ -398,12 +398,33 @@
   }
 
   // ---------- theme ----------
-  // Car Free Day is a morning event: the sky stays the same warm morning peach.
+  // Car Free Day starts in the warm morning peach. Every CYCLE_M metres the light runs a full
+  // day: day, dusk, night, dawn. `cyc` is refreshed once per frame by render().
   const SKY = [252, 234, 214];
   const INK = [74, 59, 42];
+  const NIGHT_INK = [246, 238, 222];
+  const CYCLE_M = 1000;
+  const CYCLE_KEYS = [            // [position in the cycle, sky colour, darkness 0..1]
+    [0.00, SKY, 0], [0.28, SKY, 0], [0.42, [240, 166, 140], 0.5], [0.54, [52, 58, 104], 1],
+    [0.80, [52, 58, 104], 1], [0.92, [246, 190, 176], 0.5], [1.00, SKY, 0],
+  ];
+  const clamp01 = v => Math.max(0, Math.min(1, v));
+  const mix = (a, b, t) => a + (b - a) * t;
+  function cycleAt(sc) {
+    const c = (sc % CYCLE_M) / CYCLE_M;
+    let i = 1;
+    while (i < CYCLE_KEYS.length - 1 && c > CYCLE_KEYS[i][0]) i++;
+    const [p0, s0, n0] = CYCLE_KEYS[i - 1], [p1, s1, n1] = CYCLE_KEYS[i];
+    let t = clamp01((c - p0) / (p1 - p0));
+    t = t * t * (3 - 2 * t);
+    return { c, n: mix(n0, n1, t), sky: s0.map((v, k) => Math.round(mix(v, s1[k], t))) };
+  }
+  let cyc = cycleAt(0);
   const rgb = c => `rgb(${c[0]},${c[1]},${c[2]})`;
-  const bgColor = () => rgb(SKY);
-  const fgColor = () => rgb(INK);
+  const bgColor = () => rgb(cyc.sky);
+  const fgColor = () => rgb(INK);                       // ink on the cream signs and labels
+  // ink for text and lines that sit on the sky: dark by day, cream once the sky is dark
+  const skyInk = () => { const k = clamp01((cyc.n - 0.3) / 0.25); return rgb(INK.map((v, i) => Math.round(mix(v, NIGHT_INK[i], k)))); };
 
   // ---------- game state ----------
   const player = {
@@ -953,11 +974,31 @@
   // x and width as a fraction of W, height in art pixels, wall colour, roof style
   // (0 flat, 1 gable, 2 cat-ears, 3 rounded), awning over the door (0/1)
   const BUILDINGS = [
-    [0.000, 0.105, 18, 0, 1, 1], [0.110, 0.092, 24, 1, 2, 0], [0.207, 0.110, 16, 2, 0, 1],
-    [0.322, 0.092, 22, 3, 3, 0], [0.419, 0.105, 17, 4, 1, 1], [0.529, 0.092, 25, 5, 2, 1],
-    [0.626, 0.110, 15, 0, 3, 0], [0.741, 0.092, 21, 1, 0, 1], [0.838, 0.105, 19, 2, 1, 0],
-    [0.948, 0.060, 23, 3, 2, 1],
+    [0.000, 0.105, 14, 0, 1, 1], [0.110, 0.092, 27, 1, 2, 0], [0.207, 0.110, 12, 2, 0, 0],
+    [0.322, 0.092, 20, 3, 3, 0], [0.419, 0.105, 28, 4, 1, 1], [0.529, 0.092, 15, 5, 2, 1],
+    [0.626, 0.110, 24, 0, 3, 0], [0.741, 0.092, 13, 1, 0, 1], [0.838, 0.105, 26, 2, 1, 0],
+    [0.948, 0.060, 17, 3, 2, 1],
   ];
+  // Windows are drawn twice: cream by day with the building, and warm yellow after the night
+  // tint (`lights`), so the lit ones stay bright. A fixed pattern leaves about a third dark.
+  const WARM = "rgb(255,226,138)";
+  function drawWindows(x, w, top, base, awning, lights) {
+    const S = SCALE;
+    const lowest = base - (awning ? 13 : 10) * S;
+    for (let wy = top + 4 * S; wy + 3 * S <= lowest; wy += 6 * S)
+      for (let wx = x + 3 * S; wx + 2 * S <= x + w - 2 * S; wx += 5 * S) {
+        if (lights) {
+          if (((wx / S) * 7 + (wy / S) * 13) % 3 === 0) continue;
+          ctx.fillStyle = WARM;
+        } else ctx.fillStyle = PANE;
+        ctx.fillRect(wx, wy, 2 * S, 3 * S);
+      }
+  }
+  function buildingBox(fx, fw, hp) {
+    const S = SCALE, x = Math.round(W * fx / S) * S, w = Math.max(8, Math.round(W * fw / S)) * S;
+    const base = curbY() - 2;
+    return { x, w, base, top: base - hp * S };
+  }
   function drawBuilding(x0, wp, hp, wall, roof, awning) {
     const S = SCALE, base = curbY() - 2;
     const x = x0 * S, w = wp * S, h = hp * S, top = base - h;
@@ -1007,18 +1048,138 @@
       }
     }
     // cream windows on the floors above the door
-    ctx.fillStyle = PANE;
-    const lowest = base - (awning ? 13 : 10) * S;
-    for (let wy = top + 4 * S; wy + 3 * S <= lowest; wy += 6 * S)
-      for (let wx = x + 3 * S; wx + 2 * S <= x + w - 2 * S; wx += 5 * S)
-        ctx.fillRect(wx, wy, 2 * S, 3 * S);
+    drawWindows(x, w, top, base, awning, false);
   }
+
+  // The nearer layer: street trees and lamp posts standing on the curb, in front of the
+  // buildings. It drifts at a fraction of the road's speed, a gentle sense of depth between
+  // the still skyline and the moving road. One strip of items repeats forever.
+  const FRONT_DRIFT = 0.35, FRONT_STRIP = 1100;
+  const FRONT_ITEMS = [[70, "tree"], [330, "lamp"], [560, "pine"], [800, "lamp"], [950, "tree"]];
+  const LEAF = [128, 178, 120], LEAF2 = [104, 156, 104], POLE = "rgb(96,90,100)";
+  const TREE_ROWS = [4, 8, 10, 12, 12, 12, 10, 8];     // canopy width per row, in art pixels
+  const PINE_ROWS = [2, 4, 6, 6, 8, 8, 10, 10];
+  function forFront(fn) {
+    const off = (worldX * FRONT_DRIFT) % FRONT_STRIP;
+    for (let k = -1; k * FRONT_STRIP - off < W + 40; k++)
+      for (const [ox, kind] of FRONT_ITEMS) {
+        const x = ox + k * FRONT_STRIP - off;
+        if (x > -60 && x < W + 60) fn(x, kind);
+      }
+  }
+  function drawFrontItem(cx, kind, lights) {
+    const S = SCALE, base = curbY() + 4;
+    const px = Math.round(cx / S) * S;
+    if (kind === "lamp") {
+      const ph = 22 * S, top = base - ph;
+      if (lights) {
+        const a = clamp01((cyc.n - 0.3) / 0.5);
+        ctx.fillStyle = WARM; ctx.globalAlpha = 0.16 * a;     // soft glow round the lamp
+        ctx.fillRect(px - 5 * S, top - S, 12 * S, 8 * S);
+        ctx.globalAlpha = 0.28 * a;
+        ctx.fillRect(px - 3 * S, top, 8 * S, 5 * S);
+        ctx.globalAlpha = a;
+        ctx.fillStyle = WARM; ctx.fillRect(px - S, top, 4 * S, 2 * S);
+        ctx.globalAlpha = 1;
+        return;
+      }
+      ctx.fillStyle = POLE;
+      ctx.fillRect(px, top + S, S, ph - S);                  // pole
+      ctx.fillRect(px - 3 * S, base - S, 7 * S, S);          // foot
+      ctx.fillRect(px - S, top - S, 3 * S, S);               // arm
+      ctx.fillStyle = "rgb(255,250,238)";
+      ctx.fillRect(px - S, top, 4 * S, 2 * S);               // the lamp
+      ctx.fillStyle = POLE;
+      ctx.fillRect(px - S, top + 2 * S, 4 * S, S);
+      return;
+    }
+    if (lights) return;
+    const rows = kind === "pine" ? PINE_ROWS : TREE_ROWS, col = kind === "pine" ? LEAF2 : LEAF;
+    const th = kind === "pine" ? 4 : 6, ch = rows.length * S;
+    ctx.fillStyle = TRUNK;
+    ctx.fillRect(px, base - th * S, 2 * S, th * S);          // trunk
+    const ctop = base - th * S - ch + S;
+    rows.forEach((wa, i) => {
+      const rx = px + S - (wa * S) / 2;
+      ctx.fillStyle = shade(col, i >= rows.length - 2 ? 0.86 : 1);
+      ctx.fillRect(Math.round(rx / S) * S, ctop + i * S, wa * S, S);
+    });
+    ctx.fillStyle = shade(col, 1.12);                        // a light patch top left
+    ctx.fillRect(Math.round((px + S - (rows[2] * S) / 2) / S) * S + S, ctop + 2 * S, 2 * S, S);
+  }
+
+  // Sky bodies. The sun crosses from left to right across the day half of the cycle, the moon
+  // across the night half. They are drawn before the buildings so the skyline hides their feet.
+  const SUN = "rgb(250,196,72)", MOON = "rgb(246,240,214)", CRATER = "rgb(214,208,184)";
+  function disc(cx, cy, r, color) {
+    const S = SCALE;
+    ctx.fillStyle = color;
+    for (let dy = -r; dy <= r; dy++) {
+      const hw = Math.round(Math.sqrt(r * r + 0.5 - dy * dy));
+      ctx.fillRect(Math.round(cx / S) * S - hw * S, Math.round(cy / S) * S + dy * S, (2 * hw + 1) * S, S);
+    }
+  }
+  function bodyPos(s) {                      // s runs 0..1 from the left horizon to the right one
+    const yh = curbY() - 2, yTop = Math.max(34, 30 * U + 8);
+    return [W * (0.08 + 0.84 * s), yh - Math.sin(Math.PI * s) * (yh - yTop)];
+  }
+  const STARS = (() => {
+    const out = []; let r = 7;
+    for (let i = 0; i < 34; i++) { r = (r * 9301 + 49297) % 233280; const a = r / 233280;
+      r = (r * 9301 + 49297) % 233280; out.push([a, r / 233280]); }
+    return out;
+  })();
+  function drawSky() {
+    const S = SCALE, n = cyc.n, c = cyc.c;
+    if (n > 0.35) {
+      const a = clamp01((n - 0.35) / 0.65), maxY = curbY() - 20 * S;
+      ctx.fillStyle = "rgb(255,248,226)";
+      STARS.forEach(([sx, sy], i) => {
+        ctx.globalAlpha = a * (0.55 + 0.45 * Math.sin(timeNow * 2 + i * 1.7));
+        ctx.fillRect(Math.round(sx * W / S) * S, Math.round((sy * (maxY - 10)) / S) * S + 8, S, S);
+      });
+      ctx.globalAlpha = 1;
+    }
+    const cs = c >= 0.9 ? c - 1 : c, ss = (cs + 0.1) / 0.6;
+    if (ss >= 0 && ss <= 1) {
+      const [x, y] = bodyPos(ss);
+      ctx.globalAlpha = 1 - clamp01((n - 0.2) / 0.6);
+      disc(x, y, 6, SUN);
+      ctx.globalAlpha = 1;
+    }
+    const cm = c < 0.45 ? c + 1 : c, ms = (cm - 0.45) / 0.6;
+    if (ms >= 0 && ms <= 1 && n > 0.05) {
+      const [x, y] = bodyPos(ms);
+      ctx.globalAlpha = clamp01(n * 1.6);
+      disc(x, y, 5, MOON);
+      const mx = Math.round(x / S) * S, my = Math.round(y / S) * S;
+      ctx.fillStyle = CRATER;
+      ctx.fillRect(mx - 2 * S, my - 2 * S, 2 * S, S);
+      ctx.fillRect(mx + S, my, S, 2 * S);
+      ctx.fillRect(mx - 2 * S, my + 2 * S, S, S);
+      ctx.globalAlpha = 1;
+    }
+  }
+
   function drawBackdrop() {
     const S = SCALE;
     const base = curbY() - 2;                         // where the backdrop meets the road
     for (const [fx, fw, hp, ci, roof, awning] of BUILDINGS)
       drawBuilding(Math.round(W * fx / S), Math.max(8, Math.round(W * fw / S)), hp, WALLS[ci], roof, awning);
+    forFront((x, kind) => drawFrontItem(x, kind, false));
     drawRoadsideSigns(base);
+  }
+  // the lit windows and lamps, drawn after the night tint so they glow
+  function drawLights() {
+    if (cyc.n < 0.3) return;
+    const a = clamp01((cyc.n - 0.3) / 0.5);
+    ctx.globalAlpha = a;
+    for (const [fx, fw, hp, , , awning] of BUILDINGS) {
+      const { x, w, base, top } = buildingBox(fx, fw, hp);
+      drawWindows(x, w, top, base, awning, true);
+    }
+    ctx.globalAlpha = 1;
+    forFront((x, kind) => drawFrontItem(x, kind, true));
   }
 
   // Roadside signs ARE part of the road: they scroll past at the road's speed.
@@ -1067,7 +1228,7 @@
   }
 
   function drawHUD() {
-    ctx.fillStyle = fgColor();
+    ctx.fillStyle = skyInk();
     uiFont(14);
     ctx.textAlign = "right";
     const margin = 14 * U;
@@ -1116,15 +1277,15 @@
   function drawControlHints() {
     // a tint on the half that was just pressed (touch and mouse)
     if (litL > 0 || pointerSides.size && [...pointerSides.values()].includes("L")) {
-      ctx.fillStyle = fgColor(); ctx.globalAlpha = 0.07; ctx.fillRect(0, 0, W / 2, H); ctx.globalAlpha = 1;
+      ctx.fillStyle = skyInk(); ctx.globalAlpha = 0.07; ctx.fillRect(0, 0, W / 2, H); ctx.globalAlpha = 1;
     }
-    if (litR > 0) { ctx.fillStyle = fgColor(); ctx.globalAlpha = 0.07; ctx.fillRect(W / 2, 0, W / 2, H); ctx.globalAlpha = 1; }
+    if (litR > 0) { ctx.fillStyle = skyInk(); ctx.globalAlpha = 0.07; ctx.fillRect(W / 2, 0, W / 2, H); ctx.globalAlpha = 1; }
     if (tipsDone) return;
     const kb = !touchMode;
     const duckSub = kb ? "hold ↓ or this side" : "hold this side";
     const jumpSub = kb ? "Space or this side" : "tap this side";
     if (player.state === "title") {
-      ctx.fillStyle = fgColor(); ctx.globalAlpha = 0.28;
+      ctx.fillStyle = skyInk(); ctx.globalAlpha = 0.28;
       for (let y = Math.round(H * 0.08); y < H; y += 10) ctx.fillRect(W / 2 - 1, y, 2, 5);   // the split
       ctx.globalAlpha = 1;
       const y = GROUND + Math.min(34, (H - GROUND) * 0.5);
@@ -1143,14 +1304,18 @@
   }
 
   function drawCenterText(title, sub) {
-    ctx.fillStyle = fgColor();
+    ctx.fillStyle = skyInk();
+    ctx.strokeStyle = bgColor();                  // a sky-coloured halo keeps the text clear of the sun and moon
+    ctx.lineJoin = "round";
+    ctx.lineWidth = 5 * U;
     ctx.textAlign = "center";
     const maxW = W * 0.9;
-    const y = Math.round(Math.min(H * 0.34, GROUND - 130));   // keep the title above the rooftops
+    const y = Math.round(Math.min(H * 0.34, GROUND - 150));   // keep the title above the rooftops
 
     uiFont(23, "bold");
     let tw = ctx.measureText(title).width;
     if (tw > maxW) uiFont(23 * maxW / tw, "bold");
+    ctx.strokeText(title, W / 2, y);
     ctx.fillText(title, W / 2, y);
 
     if (sub) {
@@ -1158,6 +1323,7 @@
       let sw = ctx.measureText(sub).width;
       if (sw > maxW) uiFont(13 * maxW / sw);
       ctx.globalAlpha = 0.75;
+      ctx.strokeText(sub, W / 2, y + 26 * U);
       ctx.fillText(sub, W / 2, y + 26 * U);
       ctx.globalAlpha = 1;
     }
@@ -1168,11 +1334,19 @@
     ctx.setTransform(ppu, 0, 0, ppu, 0, 0);
     ctx.imageSmoothingEnabled = false;
 
+    cyc = cycleAt(score);
     ctx.fillStyle = bgColor();
     ctx.fillRect(0, 0, W, H);
 
+    drawSky();
     drawBackdrop();
     drawGround();
+    if (cyc.n > 0) {                       // night tint over the scenery; the cats stay in full colour
+      ctx.fillStyle = "rgb(16,22,60)"; ctx.globalAlpha = 0.42 * cyc.n;
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
+    }
+    drawLights();
 
     if (!assetsReady) {
       drawCenterText("LOADING…");
@@ -1254,6 +1428,8 @@
   window.elmio = {
     get score()  { return score; },
     set score(v) { score = v; },
+    get cycle()  { return cyc; },
+    set worldX(v) { worldX = v; },
     get state()  { return player.state; },
     get speed()  { return speed; },
     get ducking(){ return player.ducking; },

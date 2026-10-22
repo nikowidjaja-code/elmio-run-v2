@@ -25,8 +25,8 @@ ENERGY 2 / RHYTHM 1 / MOTION 1
 
 - ENERGY 2: friendly and clear, never loud.
 - RHYTHM 1: a calm, uniform world. One road, one backdrop.
-- MOTION 1: the road's lane dashes and the roadside signs scroll (that is what shows speed) and
-  the characters animate. The city skyline is static.
+- MOTION 1: the road's lane dashes and the roadside signs scroll (that is what shows speed), the
+  nearer tree/lamp layer drifts slowly, and the characters animate. The city skyline is static.
 
 ## The world
 
@@ -37,7 +37,12 @@ ENERGY 2 / RHYTHM 1 / MOTION 1
 - **Roadside signs scroll with the road** (they are part of the road, not the backdrop): a
   "CAR FREE DAY" sign near the start that scrolls away, then a distance sign that passes Elmio at
   250 m, 500 m, 750 m, 1 km, 1.25 km and so on.
-- **Light:** the sky stays the warm morning peach the owner chose. No night mode, no light change.
+- **Nearer layer:** street trees and lamp posts stand on the curb in front of the buildings and drift
+  at 0.35x the road's speed (skyline still, road fastest). Building heights run from 12 to 28 art px.
+- **Light:** a full day every 1000 m (one point = 1 m): the morning peach holds to 280 m, dusk
+  to 540 m, night to 800 m, dawn back to peach at 1000 m. A sun crosses by day, a moon and stars by
+  night. The scenery is tinted dark blue at night, windows and lamps light up, and text on the sky
+  turns cream. The cats and obstacles keep full colour so they stay readable.
 - **The crowd:** the five other cats (black, grey, white, calico, colorpoint) run the same road in
   full colour, in the two lanes below Elmio's. Each has its own pace: a faster one slowly passes
   Elmio, a slower one falls behind, and a cat that leaves one side comes back on the other. They sit
@@ -96,8 +101,8 @@ cream and white. Test the grey road against the cream before committing to value
 
 ## Not doing (for now)
 
-Daily streak, collectibles, power-ups, levels, new music, other cats in costume, a parallax
-backdrop, anything with vehicles.
+Daily streak, collectibles, power-ups, levels, new music, other cats in costume, a deeper
+parallax (beyond the one slow nearer layer), anything with vehicles.
 
 ## Plan, in order (each step ends with a preview, the owner's approval, then a commit)
 
@@ -109,7 +114,7 @@ backdrop, anything with vehicles.
 5. The "Car Free Day" line on the title screen. Skipped for now by the owner (the distance signs were done in step 2).
 6. Clean-up: remove the unused gallop frames and bring the README up to date.
 
-## Next, planned (written down on request, not built yet)
+## Next, planned (items 1-3 are built, in review; item 4 remains)
 
 1. **A nearer backdrop layer.** Today the backdrop is one flat layer of buildings. Add a second,
    nearer layer in front of the buildings, standing on the curb line: street trees and lamp posts.
