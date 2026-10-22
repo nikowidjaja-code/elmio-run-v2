@@ -112,69 +112,45 @@ kbd {
   font-family: inherit;
 }
 
-/* ---------- on-screen controls (touch devices) ---------- */
-#controls {
+/* ---------- touch zones ----------
+   The whole screen is the control: the left half ducks (hold), the right half
+   jumps (tap); the listener is on the window (see game.js), so nothing here is
+   clickable. In portrait the space under the play field becomes two faint
+   labelled halves, so a new player can see where to press. */
+#zones {
   display: none;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   width: 100%;
-  justify-content: space-between;
-  align-items: flex-end;
   gap: 12px;
+  pointer-events: none;
 }
-
-body.touch #controls { display: flex; }
-body.touch .keys,
-body:not(.touch) .taps { display: none; }
-
-.pad {
-  /* thumb-sized in portrait, height-capped in landscape */
-  width: max(72px, min(26vw, 21vh, 130px));
-  aspect-ratio: 1;
+.zone {
+  flex: 1 1 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  border: 3px solid var(--ink);
+  gap: 6px;
+  border: 3px dashed rgba(74, 59, 42, 0.45);
   border-radius: 22px;
-  background: rgba(255, 255, 255, 0.55);
   color: var(--ink);
-  font-family: inherit;
-  cursor: pointer;
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
-  -webkit-tap-highlight-color: transparent;
-  transition: background-color 60ms linear, transform 60ms linear;
+  opacity: 0.8;
+  transition: background-color 80ms linear, opacity 80ms linear;
 }
+.zone .glyph { font-size: clamp(28px, 9vw, 46px); line-height: 1; }
+.zone .cap { font-size: 12px; letter-spacing: 2px; }
+.zone.lit { background: rgba(74, 59, 42, 0.16); opacity: 1; }
 
-.pad .glyph { font-size: clamp(18px, 5vw, 30px); line-height: 1; }
-.pad .cap { font-size: 10px; letter-spacing: 2px; opacity: 0.7; }
-
-.pad.on {
-  background: var(--ink);
-  color: var(--paper);
-  transform: translateY(2px);
-}
+body.touch .keys,
+body:not(.touch) .taps { display: none; }
 
 /* ---------- portrait ----------
    A phone has height to spare but spending it on the play field only buys
-   empty sky, so the leftover becomes a generous control zone instead: big
-   pads, centred in the lower half where thumbs already are. */
+   empty sky, so the leftover becomes the two labelled zones. */
 @media (orientation: portrait) {
   main { justify-content: flex-start; }
   #stage { aspect-ratio: 2 / 1; }
-  #controls {
-    flex: 1 1 auto;
-    align-items: center;
-  }
-  .pad {
-    width: max(96px, min(34vw, 26vh, 150px));
-    border-radius: 26px;
-  }
-  .pad .glyph { font-size: clamp(22px, 7vw, 38px); }
-  .pad .cap { font-size: 11px; }
+  body.touch #zones { display: flex; }
 }
 
 /* ---------- short landscape (phones held sideways) ---------- */

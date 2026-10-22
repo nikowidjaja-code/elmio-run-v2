@@ -108,3 +108,32 @@ backdrop, anything with vehicles.
 4. Elmio: headband and the landing squash. Done.
 5. The "Car Free Day" line on the title screen. Skipped for now by the owner (the distance signs were done in step 2).
 6. Clean-up: remove the unused gallop frames and bring the README up to date.
+
+## Next, planned (written down on request, not built yet)
+
+1. **A nearer backdrop layer.** Today the backdrop is one flat layer of buildings. Add a second,
+   nearer layer in front of the buildings, standing on the curb line: street trees and lamp posts.
+   Open question: should this layer stay static like the skyline, or drift slowly (a gentle depth
+   effect)? `DESIGN.md` currently says "no parallax", so the default is static unless the owner says
+   otherwise.
+2. **More varied building heights.** Today they range from about 15 to 25 art pixels. Widen the range
+   (low corner shops up to a few tall blocks), keeping the title text and the jump arc clear of the
+   rooftops (the title is already capped above the tallest roof).
+3. **A day and night cycle with a sun and a moon.** A sun that crosses the sky by day, a moon (and
+   some stars) at night, with the sky, buildings and road shifting tone.
+   - This **reverses two earlier decisions** ("no night mode" and "the sky stays the warm morning
+     peach"). When it is built, update the Theme and World sections of this file to match.
+   - Open questions: how long a day or a night lasts (the old game flipped every 500 points; the
+     distance signs are every 250 m, so something like one phase per 500 m would fit); whether the
+     daytime look stays the current morning peach; lit windows at night; keeping the score text and
+     the signs readable at night; and whether the other cats and the obstacles get a night tint.
+4. **After those:** the clean-up (remove the unused gallop frames, rewrite the README).
+
+## Controls (built, being finished)
+
+The whole screen is the control: the left half ducks (hold), the right half jumps (tap), for both
+touch and mouse; the keyboard stays the main control on a desktop. The on-screen pads are gone. In
+portrait the space under the play field shows two faint labelled halves. The title screen shows the
+split, and the first runs add a prompt when the first low flyer or ground obstacle arrives; the hints
+stop once a player has jumped and ducked, remembered on the device.
+

@@ -21,16 +21,14 @@
 
     <p class="hint">
       <span class="keys"><kbd>Space</kbd>/<kbd>&uarr;</kbd> jump &middot; <kbd>&darr;</kbd> duck</span>
-      <span class="taps">tap the screen to jump &middot; hold DUCK to slide under</span>
+      <span class="taps">right half: tap to jump &middot; left half: hold to duck</span>
     </p>
 
-    <div id="controls">
-      <button id="btn-duck" class="pad" type="button" aria-label="Duck">
-        <span class="glyph">&#9660;</span><span class="cap">DUCK</span>
-      </button>
-      <button id="btn-jump" class="pad" type="button" aria-label="Jump">
-        <span class="glyph">&#9650;</span><span class="cap">JUMP</span>
-      </button>
+    <!-- touch zones: the whole screen is split down the middle (left = hold to duck,
+         right = tap to jump). These two labels are only a passive hint in portrait. -->
+    <div id="zones" aria-hidden="true">
+      <div id="zone-duck" class="zone"><span class="glyph">&#9660;</span><span class="cap">HOLD TO DUCK</span></div>
+      <div id="zone-jump" class="zone"><span class="glyph">&#9650;</span><span class="cap">TAP TO JUMP</span></div>
     </div>
   </main>
   <script src="game.js"></script>

@@ -722,7 +722,21 @@
     if (touchMode && navigator.vibrate) { try { navigator.vibrate(ms); } catch (_) {} }
   }
 
+  // First-time hints stop once the player has both jumped and ducked in a run (remembered on the device).
+  const TIPS_KEY = "elmio-run.tips";
+  let tipsDone = false, didJump = false, didDuck = false;
+  try { tipsDone = localStorage.getItem(TIPS_KEY) === "1"; } catch (_) {}
+  function noteAction(kind) {
+    if (player.state !== "run" || tipsDone) return;
+    if (kind === "jump") didJump = true; else didDuck = true;
+    if (didJump && didDuck) {
+      tipsDone = true;
+      try { localStorage.setItem(TIPS_KEY, "1"); } catch (_) {}
+    }
+  }
+
   function doJump() {
+    noteAction("jump");
     player.vy = JUMP_V * f;          // arc height stays put, air time scales 1/f
     player.grounded = false;
     player.ducking = false;
@@ -755,6 +769,7 @@
   function duckPress() {
     if (player.state !== "run") { jumpAction(); return; }   // start / restart
     if (!player.ducking) player.duckT = 0;
+    noteAction("duck");
     player.ducking = true;
     haptic(6);
   }
@@ -774,40 +789,45 @@
     if (e.code === "ArrowDown" || e.code === "KeyS") duckRelease();
   });
 
-  // Tapping/clicking anywhere in the play field jumps; ducking is the DUCK
-  // pad or the down arrow, so there is no invisible half-screen to mis-hit.
-  canvas.addEventListener("pointerdown", e => {
+  // The whole screen is the control: the left half ducks (hold), the right half
+  // jumps (tap). It works the same for touch and for the mouse; the keyboard stays
+  // the main control on a desktop. Several fingers are fine (hold left, tap right).
+  // The listener is on the window so the area under the play field counts too.
+  const pointerSides = new Map();                       // pointerId -> "L" | "R"
+  const zoneDuck = document.getElementById("zone-duck");
+  const zoneJump = document.getElementById("zone-jump");
+  let litL = 0, litR = 0;                               // seconds the half stays tinted after a press
+  window.addEventListener("pointerdown", e => {
+    if (e.button > 0) return;                            // primary button or touch only
+    if (e.target.closest && e.target.closest("button, a")) return;   // the fullscreen button
     e.preventDefault();
-    try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
-    if (e.pointerType === "touch") { touchMode = true; document.body.classList.add("touch"); }
-    jumpAction();
+    if (e.pointerType === "touch") enterTouchMode();
+    const side = e.clientX < window.innerWidth / 2 ? "L" : "R";
+    pointerSides.set(e.pointerId, side);
+    if (side === "L") {
+      duckPress(); litL = 0.15;
+      if (zoneDuck) zoneDuck.classList.add("lit");
+    } else {
+      jumpAction(); litR = 0.15;
+      if (zoneJump) { zoneJump.classList.add("lit"); setTimeout(() => zoneJump.classList.remove("lit"), 130); }
+    }
   });
-  canvas.addEventListener("pointerup", jumpRelease);
-  canvas.addEventListener("pointercancel", jumpRelease);
-  canvas.addEventListener("contextmenu", e => e.preventDefault());
-
-  // Hold-style pads. Pointer capture keeps the hold alive even if the thumb
-  // slides off the button, and guarantees we always see the release.
-  function bindPad(el, onDown, onUp) {
-    if (!el) return;
-    const release = () => {
-      if (!el.classList.contains("on")) return;
-      el.classList.remove("on");
-      onUp();
-    };
-    el.addEventListener("pointerdown", e => {
-      e.preventDefault();
-      try { el.setPointerCapture(e.pointerId); } catch (_) {}
-      el.classList.add("on");
-      onDown();
-    });
-    el.addEventListener("pointerup", release);
-    el.addEventListener("pointercancel", release);
-    el.addEventListener("lostpointercapture", release);
-    el.addEventListener("contextmenu", e => e.preventDefault());
+  function releasePointer(e) {
+    const side = pointerSides.get(e.pointerId);
+    if (!side) return;
+    pointerSides.delete(e.pointerId);
+    if (side === "R") { jumpRelease(); return; }
+    if (![...pointerSides.values()].includes("L")) {    // the last finger left the duck half
+      duckRelease();
+      if (zoneDuck) zoneDuck.classList.remove("lit");
+    }
   }
-  bindPad(document.getElementById("btn-jump"), jumpAction, jumpRelease);
-  bindPad(document.getElementById("btn-duck"), duckPress, duckRelease);
+  window.addEventListener("pointerup", releasePointer);
+  window.addEventListener("pointercancel", releasePointer);
+  window.addEventListener("blur", () => {               // a release outside the window is never seen
+    for (const id of [...pointerSides.keys()]) releasePointer({ pointerId: id });
+  });
+  canvas.addEventListener("contextmenu", e => e.preventDefault());
 
   // ---------- update ----------
   function die() {
@@ -829,6 +849,7 @@
 
     player.animT += dt;
     player.duckT += dt; player.duckOutT += dt; player.landT += dt;
+    litL -= dt; litR -= dt;
 
     if (player.state === "starting" && animDone("standUp", player.animT)) reset();
 
@@ -1063,6 +1084,64 @@
     ctx.textAlign = "left";
   }
 
+  // A small cream label in the same style as the roadside signs.
+  function drawLabel(line1, line2, cx, cy, tri) {
+    uiFont(13, "bold");
+    const w1 = ctx.measureText(line1).width;
+    uiFont(10);
+    const w2 = line2 ? ctx.measureText(line2).width : 0;
+    const tw = 12 * U, w = Math.max(w1 + tw + 10 * U, w2) + 16 * U, h = (line2 ? 38 : 26) * U;
+    const x = cx - w / 2, y = cy - h / 2;
+    ctx.fillStyle = fgColor();
+    ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+    ctx.fillStyle = "rgb(255,250,238)";
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = fgColor();
+    const ty = line2 ? y + 17 * U : y + h / 2 + 5 * U;
+    // a small triangle: down for duck, up for jump
+    const tx = x + 10 * U + tw / 2, tyc = ty - 5 * U, tr = 5 * U;
+    ctx.beginPath();
+    if (tri === "down") { ctx.moveTo(tx - tr, tyc - tr * 0.6); ctx.lineTo(tx + tr, tyc - tr * 0.6); ctx.lineTo(tx, tyc + tr * 0.8); }
+    else { ctx.moveTo(tx - tr, tyc + tr * 0.8); ctx.lineTo(tx + tr, tyc + tr * 0.8); ctx.lineTo(tx, tyc - tr * 0.6); }
+    ctx.fill();
+    ctx.textAlign = "left";
+    uiFont(13, "bold");
+    ctx.fillText(line1, x + 10 * U + tw + 4 * U, ty);
+    if (line2) { ctx.textAlign = "center"; uiFont(10); ctx.fillText(line2, cx, y + h - 8 * U); }
+    ctx.textAlign = "left";
+  }
+
+  // Controls hints: the title screen shows the split; the first runs add a prompt just as the
+  // first low flyer or ground obstacle arrives. They stop once the player has jumped and ducked.
+  function drawControlHints() {
+    // a tint on the half that was just pressed (touch and mouse)
+    if (litL > 0 || pointerSides.size && [...pointerSides.values()].includes("L")) {
+      ctx.fillStyle = fgColor(); ctx.globalAlpha = 0.07; ctx.fillRect(0, 0, W / 2, H); ctx.globalAlpha = 1;
+    }
+    if (litR > 0) { ctx.fillStyle = fgColor(); ctx.globalAlpha = 0.07; ctx.fillRect(W / 2, 0, W / 2, H); ctx.globalAlpha = 1; }
+    if (tipsDone) return;
+    const kb = !touchMode;
+    const duckSub = kb ? "hold ↓ or this side" : "hold this side";
+    const jumpSub = kb ? "Space or this side" : "tap this side";
+    if (player.state === "title") {
+      ctx.fillStyle = fgColor(); ctx.globalAlpha = 0.28;
+      for (let y = Math.round(H * 0.08); y < H; y += 10) ctx.fillRect(W / 2 - 1, y, 2, 5);   // the split
+      ctx.globalAlpha = 1;
+      const y = GROUND + Math.min(34, (H - GROUND) * 0.5);
+      drawLabel("DUCK", duckSub, W * 0.25, y, "down");
+      drawLabel("JUMP", jumpSub, W * 0.75, y, "up");
+      return;
+    }
+    if (player.state !== "run") return;
+    const pulse = 0.65 + 0.35 * Math.abs(Math.sin(timeNow * 5));
+    const needDuck = !didDuck && obstacles.some(o => o.kind === "fly" && o.alt === FLY_MID && o.x > PLAYERX + 60 && o.x < W * 0.85);
+    const needJump = !didJump && obstacles.some(o => o.kind !== "fly" && o.x > PLAYERX + 40 && o.x < W * 0.75);
+    ctx.globalAlpha = pulse;
+    if (needDuck) drawLabel("DUCK", kb ? "hold ↓" : "hold the left side", W * 0.25, 58 * U, "down");
+    if (needJump) drawLabel("JUMP", kb ? "Space" : "tap the right side", W * 0.75, 58 * U, "up");
+    ctx.globalAlpha = 1;
+  }
+
   function drawCenterText(title, sub) {
     ctx.fillStyle = fgColor();
     ctx.textAlign = "center";
@@ -1112,6 +1191,7 @@
     drawFrame("orange", playerFrame(), PLAYERX, player.y, false);
 
     drawHUD();
+    drawControlHints();
 
     if (player.state === "title") {
       drawCenterText("E L M I O   R U N",
