@@ -1,13 +1,13 @@
 # Elmio Run 🐈
 
-A Chrome-dino-style endless runner starring the orange cat from the
-*Cat Sprites Animation* pack. Jump and duck your way past the other
-neighborhood cats for as long as you can.
+A Chrome-dino-style endless runner, and a small tribute to a real cat. Elmio, an
+orange tabby, runs a Car Free Day made for cats only: a wide empty road, no
+cars and no people, and the neighbourhood cats out for their morning run.
+Jump and duck past what is left on the road for as long as you can.
 
 ## How to play
 
-Open `index.html` in any modern browser (double-clicking works — no build
-step, no dependencies). Or serve it:
+Open `index.html` in any modern browser (no build step, no dependencies). Or serve it:
 
 ```
 python -m http.server 8000
@@ -16,108 +16,84 @@ python -m http.server 8000
 
 ### Controls
 
-| Action          | Keyboard                | Touch                          |
+The whole screen is the control.
+
+| Action          | Keyboard                | Touch or mouse                 |
 | --------------- | ----------------------- | ------------------------------ |
-| Jump            | `Space` / `↑` / `W`     | **JUMP** pad, or tap the field |
-| Duck            | hold `↓` / `S`          | hold the **DUCK** pad          |
+| Jump            | `Space` / `↑` / `W`     | tap the **right half**         |
+| Duck            | hold `↓` / `S`          | hold the **left half**         |
 | Start / restart | `Space` or any jump key | tap anywhere                   |
 
-On touch devices two thumb pads appear below the play field (duck left, jump
-right) and a fullscreen toggle appears in the corner of the field. Tapping
-anywhere in the play field also jumps, so the pads are optional.
+The title screen shows the split, and the first runs add a prompt just as the
+first obstacle that needs it arrives. The prompts stop once you have jumped and
+ducked, and that is remembered on the device. In portrait, two faint labelled
+halves sit under the play field.
 
-Releasing jump early cuts the jump short (but never below the height needed to
-clear the tallest obstacle, so a quick tap is always a usable jump); holding
-duck mid-air fast-falls. Pressing jump just before you land is remembered for
-a moment and fires on touchdown. Jumping out of a duck works, so mashing both
-pads is safe.
+Releasing jump early cuts the jump short (never below the height needed to clear
+the tallest obstacle, so a quick tap is always a usable jump); holding duck
+mid-air fast-falls. Pressing jump just before you land is remembered for a
+moment and fires on touchdown.
 
-### Screens
+### The road
 
-The play field adapts to whatever box the page gives it — landscape, portrait,
-or a rotation mid-run — and the game is measured in world "units" rather than
-pixels:
-
-- Phones get a **tighter camera** (a ~700-unit runway instead of 900) so the
-  cat and the food stay big enough to read.
-- Scroll speed and the jump arc are scaled with the runway, so the *timing* is
-  identical on every screen: an obstacle always takes the same number of
-  seconds to arrive, a jump always covers the same amount of ground (236
-  units) and reaches the same height (115 units), and scores are comparable
-  between devices.
-- The canvas is rendered at device-pixel resolution, so the pixel art stays
-  crisp on high-DPI displays.
+- **Distance is the score:** one point is one metre. A roadside sign passes at
+  250 m, 500 m, 750 m, 1 km and so on, and a "CAR FREE DAY" sign stands near the start.
+- **The light changes every 1000 m:** morning peach, dusk, night with a moon and
+  stars, then dawn. Windows and lamps light up at night.
+- **Scenery:** pastel shops of different heights, with street trees and lamp
+  posts in front that drift slowly. The other five cats (black, grey, white,
+  calico, colorpoint) run in the lanes below Elmio at their own paces.
+- **Speed:** starts at 250, gains 5 per second, caps at 700. The best score is
+  saved in `localStorage`.
 
 ### Obstacles
 
-All cat food, rudely left in the running lane — or thrown at you. Groups are
-drawn from a weighted table (`PATTERNS` in `game.js`), and about a third of them
-have to be **ducked** rather than jumped.
+Things you might find on a closed street. Groups come from a weighted table
+(`PATTERNS` in `game.js`), and about a third of them have to be ducked.
 
-On the ground, jump over:
+- Jump over: traffic cone (single or pair), road barrel, fire hydrant, puddle,
+  fish and fishbone treats (singles, pairs, triples), and a rolling ball.
+- Duck under: pigeons (single or a flock of two or three) and gliding fishbones.
+- Ignore: butterflies sail overhead, a fake-out.
 
-- **Whole fish** — alone or in schools of 2–3 (three only above a certain speed,
-  so a quick tapped jump can still clear the whole school).
-- **Open pâté cans** — single or in pairs.
-- **Kibble bags** (tall), **wet food pouches**, **kibble piles**, **fishbones**.
+Pairs, triples and barrels only appear once the road is fast enough that a
+tapped jump has a comfortable window, and the short waits between groups ramp
+in over the first 400 m. The wait between groups is scheduled in arrival time,
+not distance, so the pause you feel stays the same however wide the group is.
 
-In the air, closing in 25% faster than the ground scrolls:
+### Screens
 
-- **Low flying fish** — jump it.
-- **Head-height flying fish**, single, or **flocks of 2–3** — duck. A single one
-  can also be jumped with good timing, but a flock is too wide for the arc to
-  span while staying above it, so sliding under is the only answer.
-- **Gliding fishbones**, single or in pairs, also at head height — duck.
-- **High flying fish** — sails overhead. Do nothing; it's a fake-out.
+The game is measured in world "units", so it adapts to landscape, portrait or a
+rotation mid-run. Phones get a tighter camera, and scroll speed and the jump
+arc scale with it, so the timing is the same on every screen. The canvas
+renders at device-pixel resolution, so the pixel art stays crisp.
 
-The head-height groups unlock as your score climbs (single at 50, flocks at
-160, wide flocks at 320+), so the opening stretch stays calm.
+## Art
 
-### Pacing
+- **Elmio** is the stock `Orange Cat.png` sheet edited by `tools/edit_stock.py`
+  into `assets/Elmio Cat.png`: golden coat, white socks, chest bib, cream tail
+  tip, a one-pixel tail flick, a two-row blue headband, crouch frames for
+  ducking and a landing frame. The other five cats use the unedited sheets.
+- **Obstacles** are small pixel grids drawn by `tools/obstacle_sprites.py` and
+  built into `game.js`. The scenery, sun, moon, stars and text are drawn on the
+  canvas. Sounds are tiny WebAudio blips. The app icon is Elmio's face, built
+  by `tools/make_icon.py`.
 
-The pause between one group finishing its pass and the next one arriving is
-drawn from three buckets rather than one flat range, so the rhythm keeps
-shifting: **back-to-back** (~0.7–0.95 s), **cruising** (~1.05–1.65 s), and a
-**breather** (~1.9–2.9 s).
-
-Because that pause is what a player actually feels, it is scheduled in arrival
-time, not in distance: the next group is picked in advance and its spawn is
-solved backwards from when it should reach the cat. A plain distance timer gets
-this wrong twice over — flyers close in faster than the ground scrolls, and a
-wide flock takes far longer to finish passing than a single fish, so both would
-silently eat into your reaction time.
-
-The other neighborhood cats (black, grey, white, calico, colorpoint) race
-along in the distance as a faded background layer.
-
-The game speeds up the longer you survive, day turns to night every 500
-points, and your best score is saved in `localStorage`.
-
-## Assets
-
-All cats are drawn from the 32×32-per-frame sprite sheets in `assets/`
-(orange cat = player; the other five colors = background racers). The
-animation sequences (run, jump, duck/laying, sitting, sleeping) follow
-the pack's own labelled reference sheet. The duck pose is the laying
-animation with only the body squashed flat — the head stays at full
-size — since the pack has no true crouch-run frame.
-
-The cat-food obstacles (can, kibble bag, pouch, bowl) are procedural
-pixel art defined as character grids in `game.js` — no image files. Ground, clouds,
-stars, moon and text are procedural canvas shapes — no other art assets
-are used. Sounds are tiny WebAudio blips, no audio files.
+`DESIGN.md` holds the direction (theme, tone, rules) that the game follows.
 
 ## Files
 
 ```
-index.html   page shell + touch pads
-style.css    responsive layout (landscape/portrait) + pixel-crisp canvas
-game.js      the whole game (~700 lines, vanilla JS)
-assets/      the six cat sprite sheets (128×256, 4×8 grid of 32×32 cells)
+index.html            page shell
+style.css             responsive layout and pixel-crisp canvas
+game.js               the whole game, vanilla JS
+manifest.webmanifest  home-screen install info
+assets/               the six cat sheets (128x256, 4x8 grid of 32x32 cells) and icons
+tools/                scripts that build the Elmio sheet, obstacle sprites and icons
+DESIGN.md             design direction
 ```
 
-`window.elmio` is a dev hook: `elmio.score = 495` to preview night mode,
-`elmio.world` for the current unit grid, `elmio.tick(1/60, n)` to step frames,
-`elmio.debug` for live hitboxes, `elmio.patterns` for the spawn table and
-`elmio.spawns` for the recent spawn stream (name + intended gap) when tuning
-pacing.
+`window.elmio` is a dev hook: `elmio.score = 650` to preview night, `elmio.world`
+for the unit grid, `elmio.tick(1/60, n)` to step frames, `elmio.debug` for live
+hitboxes, `elmio.patterns` and `elmio.spawns` for the spawn table and stream,
+`elmio.reset(quiet)` and `elmio.speed` for simulations.

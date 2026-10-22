@@ -112,7 +112,7 @@ parallax (beyond the one slow nearer layer), anything with vehicles.
 3. Obstacles: the 7 new sprites. Built, in review.
 4. Elmio: headband and the landing squash. Done.
 5. The "Car Free Day" line on the title screen. Skipped for now by the owner (the distance signs were done in step 2).
-6. Clean-up: remove the unused gallop frames and bring the README up to date.
+6. Clean-up: removed the unused gallop frames and brought the README up to date. Done.
 
 ## Next, planned (items 1-3 are built, in review; item 4 remains)
 
@@ -132,7 +132,7 @@ parallax (beyond the one slow nearer layer), anything with vehicles.
      distance signs are every 250 m, so something like one phase per 500 m would fit); whether the
      daytime look stays the current morning peach; lit windows at night; keeping the score text and
      the signs readable at night; and whether the other cats and the obstacles get a night tint.
-4. **After those:** the clean-up (remove the unused gallop frames, rewrite the README).
+4. **Clean-up:** done (gallop frames removed, README rewritten).
 
 ## Controls (built, being finished)
 
