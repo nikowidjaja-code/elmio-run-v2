@@ -3,7 +3,8 @@
 Pass 1: recolour to his golden coat (guideline photos) and paint white socks.
 Pass 3: two real crouch frames for ducking (cells (2,1) and (2,2)), built from the
         finished stand1/stand2 frames: head lowered onto the body, legs unchanged; plus a
-        half-way 'duckmid' frame at (1,2) for the transition into and out of the duck.
+        half-way 'duckmid' frame at (1,2) for the transition into and out of the duck, and a 'land'
+        frame at (1,3) (head dropped 3 rows) shown for a blink when a jump touches down.
 Pass 4: a 12-frame gallop (6 key poses + 6 in-betweens in rows 8-9, which this script
         adds to the sheet): a 6-frame gallop (cells (2,3), (4,2), (4,3), (6,1), (6,2), (6,3)): the finished
         stand frames' head/body/tail with the legs redrawn per pose, bouncing up in the air.
@@ -99,7 +100,7 @@ def main():
     # half-way "duckmid" frame (head dropped 2 of the 4 rows) shown for a blink when the duck
     # starts and ends
     for (r, c), (dr, dc), chin, DROP in (((1, 0), (2, 1), 17, 4), ((1, 1), (2, 2), 18, 4),
-                                          ((1, 0), (1, 2), 17, 2)):
+                                          ((1, 0), (1, 2), 17, 2), ((1, 0), (1, 3), 17, 3)):
         cell = out.crop((c * CELL, r * CELL, c * CELL + CELL, r * CELL + CELL))
         body, head = cell.copy(), Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
         bp, hp = body.load(), head.load()
@@ -265,6 +266,28 @@ def main():
                     op[ox + nx, oy + ny] = OUTLINE
     lean_tail(1, 0, 14, -1)                            # stand1: leans left
     lean_tail(1, 1, 14, +1)                            # stand2: leans right
+    # pass 6: the headband. On every frame with a face, find the pink nose and paint a two-row band
+    # across the forehead just above the eyes (the lower row 3 rows above the nose, the lighter
+    # top row above that), from outline to outline. Last, so every derived frame (crouch, gallop,
+    # land) gets it too.
+    BAND = (74, 142, 214, 255)
+    BAND_HI = (122, 178, 236, 255)
+    NOSE = (255, 133, 132, 255)
+    banded = 0
+    for cy in range(0, out.height, CELL):
+        for cx in range(0, out.width, CELL):
+            nose = [(x, y) for y in range(CELL) for x in range(CELL) if op[cx + x, cy + y] == NOSE]
+            if not nose:
+                continue
+            nx, ny = nose[0]
+            for y, col in ((ny - 4, BAND_HI), (ny - 3, BAND)):
+                for step in (-1, 1):
+                    x = nx
+                    while 0 <= x < CELL and op[cx + x, cy + y][3] and op[cx + x, cy + y] != OUTLINE:
+                        op[cx + x, cy + y] = col
+                        x += step
+            banded += 1
+    print(f"headband on {banded} frames")
     os.makedirs(OUT, exist_ok=True)
     out.save(os.path.join(OUT, "Elmio Cat.png"))
     S = 6

@@ -87,6 +87,7 @@
     ["duck1",    2, 1, [8, 12, 26, 25]],  // crouch run A (head dropped onto the body)
     ["duck2",    2, 2, [8, 13, 26, 25]],  // crouch run B
     ["duckmid",  1, 2, [8, 10, 26, 25]],  // half-way into/out of the crouch (head dropped 2 rows)
+    ["land",     1, 3, [8, 8, 26, 25]],   // touching down after a jump (head dropped 3 rows); hitbox top = a run frame's
     // gallop: the air frames (1, 5, 6) are drawn lifted off the ground; bb[1] is
     // the hitbox top only, so it stays at the old run cycle's 8/9 and the lift is forgiving.
     ["gallop1",  2, 3, [8, 8, 26, 25]],   // stretched out in the air
@@ -410,7 +411,9 @@
     ducking: false, animT: 0, state: "title", // title | starting | run | over
     overT: 0,
     duckT: 99, duckOutT: 99,   // seconds since the duck started / ended (99 = long ago)
+    landT: 99,                 // seconds since a jump touched down
   };
+  const LAND_TIME = 0.07;      // how long the landing frame shows
   const DUCK_TRANS = 0.05;     // how long the half-way frame shows going into / out of a duck
   let obstacles = [];   // {kind, spr, x, alt, animT, phase}
   let speed = SPEED0;   // reference units/s; multiply by f for real movement
@@ -545,7 +548,7 @@
     jumpBuffer = 0;
     player.y = GROUND; player.vy = 0; player.grounded = true;
     player.ducking = false; player.animT = 0;
-    player.duckT = 99; player.duckOutT = 99;
+    player.duckT = 99; player.duckOutT = 99; player.landT = 99;
     player.state = "run";
     spawnLog = [];
     tailArrival = timeNow + 1.6;   // a beat of empty road to get going
@@ -699,6 +702,7 @@
     if (player.ducking) {
       return player.duckT < DUCK_TRANS ? F.duckmid : animFrame("duck", player.animT);
     }
+    if (player.landT < LAND_TIME) return F.land;
     return player.duckOutT < DUCK_TRANS ? F.duckmid : animFrame("run", player.animT);
   }
 
@@ -824,7 +828,7 @@
     timeNow += dt;
 
     player.animT += dt;
-    player.duckT += dt; player.duckOutT += dt;
+    player.duckT += dt; player.duckOutT += dt; player.landT += dt;
 
     if (player.state === "starting" && animDone("standUp", player.animT)) reset();
 
@@ -842,6 +846,7 @@
         player.y = GROUND;
         player.vy = 0;
         player.grounded = true;
+        player.landT = 0;
         if (jumpBuffer > 0) doJump();
       }
     }

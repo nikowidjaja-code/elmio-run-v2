@@ -48,8 +48,9 @@ ENERGY 2 / RHYTHM 1 / MOTION 1
 ## Elmio
 
 An orange tabby, edited from the stock cat sheet (same 32x32 grid and frames): golden coat, white
-socks, V-shaped chest bib, cream tail tip, a one-pixel tail flick while running. Still to add:
-a headband, and a landing-squash frame for the jump. The other cats do not get headbands.
+socks, V-shaped chest bib, cream tail tip, a one-pixel tail flick while running, a one-row blue
+headband on every frame, and a brief landing-squash frame when a jump touches down. The other cats
+do not get headbands.
 
 ## Obstacles
 
@@ -76,7 +77,7 @@ a sleeping-loaf cat (could replace the fishbone later).
 ## Progress and HUD
 
 Score is distance: one point is one metre. A roadside sign every 250 m (labelled in m, then km).
-A "Car Free Day" line on the title screen. The best score is still saved on the
+A "Car Free Day" line on the title screen is skipped for now. The best score is still saved on the
 device. A daily streak is a possible later step, not part of the first pass.
 
 ## Palette direction (not final)
@@ -104,6 +105,6 @@ backdrop, anything with vehicles.
 2. World: multi-lane road, city skyline backdrop, scrolling roadside signs, the other cats running
    in their own lanes. Done.
 3. Obstacles: the 7 new sprites. Built, in review.
-4. Elmio: headband and the landing squash.
-5. HUD: the title line (the distance signs are already done in step 2).
+4. Elmio: headband and the landing squash. Done.
+5. The "Car Free Day" line on the title screen. Skipped for now by the owner (the distance signs were done in step 2).
 6. Clean-up: remove the unused gallop frames and bring the README up to date.
